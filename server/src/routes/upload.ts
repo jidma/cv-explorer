@@ -1,12 +1,10 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
-import os from 'os';
 import { eq, desc, sql } from 'drizzle-orm';
-import { processResume } from '../pipeline';
 import { db } from '../db/client';
 import { uploads, candidates, uploadCandidates } from '../db/schema';
+import { triggerUploadProcessing } from '../uploadWorker';
 
 const router = Router();
 
@@ -110,88 +108,13 @@ router.post('/', upload.array('resume', 10), async (req, res) => {
       created_at: uploads.createdAt,
     });
 
+    // Trigger server-side background processing
+    triggerUploadProcessing();
+
     res.json({ uploads: records });
   } catch (err) {
     console.error('Error creating upload records:', err);
     res.status(500).json({ error: 'Failed to create upload records' });
-  }
-});
-
-// POST /api/uploads/:id/process — process a single upload
-router.post('/:id/process', async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const [record] = await db
-      .select()
-      .from(uploads)
-      .where(eq(uploads.id, id));
-
-    if (!record) {
-      return res.status(404).json({ error: 'Upload not found' });
-    }
-
-    if (record.status !== 'pending') {
-      return res.status(400).json({ error: `Upload is already ${record.status}` });
-    }
-
-    // Mark as processing
-    await db.update(uploads)
-      .set({ status: 'processing', updatedAt: new Date() })
-      .where(eq(uploads.id, id));
-
-    // Write file data to temp file for pipeline
-    const ext = path.extname(record.originalFilename).toLowerCase();
-    const tmpPath = path.join(os.tmpdir(), `cv-upload-${id}${ext}`);
-    fs.writeFileSync(tmpPath, record.fileData!);
-
-    try {
-      const result = await processResume(tmpPath, record.originalFilename);
-
-      // Mark upload as completed
-      await db.update(uploads)
-        .set({
-          status: 'completed',
-          ingestionCost: result.totalCost.toFixed(6),
-          ingestionTokens: result.totalTokens,
-          updatedAt: new Date(),
-        })
-        .where(eq(uploads.id, id));
-
-      // Link upload to candidate via junction table
-      await db.insert(uploadCandidates).values({
-        uploadId: id,
-        candidateId: result.candidateId,
-      });
-
-      res.json({
-        id,
-        status: 'completed',
-        candidate_id: result.candidateId,
-        ingestion_cost: result.totalCost.toFixed(6),
-        ingestion_tokens: result.totalTokens,
-      });
-    } catch (pipelineErr) {
-      const errorMsg = pipelineErr instanceof Error ? pipelineErr.message : 'Processing failed';
-      await db.update(uploads)
-        .set({
-          status: 'error',
-          errorMessage: errorMsg,
-          updatedAt: new Date(),
-        })
-        .where(eq(uploads.id, id));
-
-      res.json({
-        id,
-        status: 'error',
-        error_message: errorMsg,
-      });
-    } finally {
-      try { fs.unlinkSync(tmpPath); } catch {}
-    }
-  } catch (err) {
-    console.error('Error processing upload:', err);
-    res.status(500).json({ error: 'Failed to process upload' });
   }
 });
 

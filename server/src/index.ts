@@ -4,6 +4,7 @@ import { config } from './config';
 import uploadRoutes from './routes/upload';
 import candidateRoutes from './routes/candidates';
 import chatRoutes from './routes/chat';
+import { triggerUploadProcessing } from './uploadWorker';
 
 const app = express();
 
@@ -22,4 +23,6 @@ app.get('/api/health', (_req, res) => {
 
 app.listen(config.port, () => {
   console.log(`Server running on http://localhost:${config.port}`);
+  // Resume any pending/stalled uploads from previous runs
+  triggerUploadProcessing();
 });

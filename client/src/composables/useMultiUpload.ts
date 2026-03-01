@@ -1,9 +1,10 @@
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import type { Upload } from '../types';
 
 // Module-level state so it survives route navigation
 const uploads = ref<Upload[]>([]);
-const isProcessing = ref(false);
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let pollListeners = 0;
 
 export function useMultiUpload() {
 
@@ -37,44 +38,9 @@ export function useMultiUpload() {
 
       // Refresh list to show new pending items
       await loadUploads();
-
-      // Start processing if not already running
-      if (!isProcessing.value) {
-        processNext();
-      }
     } catch (err) {
       console.error('Failed to enqueue files:', err);
     }
-  }
-
-  async function processNext() {
-    isProcessing.value = true;
-
-    while (true) {
-      const pending = uploads.value.find(u => u.status === 'pending');
-      if (!pending) break;
-
-      // Optimistically mark as processing in the UI
-      pending.status = 'processing';
-
-      try {
-        const res = await fetch(`/api/uploads/${pending.id}/process`, {
-          method: 'POST',
-        });
-
-        if (!res.ok) {
-          console.error('Failed to process upload:', pending.id);
-        }
-
-        // Refresh from DB to get accurate state
-        await loadUploads();
-      } catch (err) {
-        console.error('Error processing upload:', err);
-        await loadUploads();
-      }
-    }
-
-    isProcessing.value = false;
   }
 
   async function removeUpload(id: string) {
@@ -86,5 +52,38 @@ export function useMultiUpload() {
     }
   }
 
-  return { uploads, isProcessing, loadUploads, enqueueFiles, removeUpload };
+  const hasActiveUploads = computed(() =>
+    uploads.value.some(u => u.status === 'pending' || u.status === 'processing')
+  );
+
+  /** Start polling for status updates. Call stopPolling() on unmount. */
+  function startPolling(intervalMs = 2000) {
+    pollListeners++;
+    if (pollTimer) return; // already polling
+    pollTimer = setInterval(async () => {
+      await loadUploads();
+      // Stop polling if nothing is active
+      if (!hasActiveUploads.value && pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    }, intervalMs);
+  }
+
+  function stopPolling() {
+    pollListeners = Math.max(0, pollListeners - 1);
+    if (pollListeners === 0 && pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+
+  /** Ensure polling is running if there are active uploads */
+  function ensurePolling() {
+    if (hasActiveUploads.value && !pollTimer) {
+      startPolling();
+    }
+  }
+
+  return { uploads, hasActiveUploads, loadUploads, enqueueFiles, removeUpload, startPolling, stopPolling, ensurePolling };
 }

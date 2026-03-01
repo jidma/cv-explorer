@@ -82,30 +82,41 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useMultiUpload } from '../composables/useMultiUpload';
 import type { Upload } from '../types';
 
-const { uploads: uploadList, isProcessing, loadUploads, enqueueFiles, removeUpload } = useMultiUpload();
+const { uploads: uploadList, loadUploads, enqueueFiles, removeUpload, startPolling, stopPolling, ensurePolling } = useMultiUpload();
 const dragOver = ref(false);
 
 const pendingCount = computed(() => uploadList.value.filter(u => u.status === 'pending').length);
 const processingCount = computed(() => uploadList.value.filter(u => u.status === 'processing').length);
 
-onMounted(() => {
-  loadUploads();
+onMounted(async () => {
+  await loadUploads();
+  ensurePolling();
+});
+
+onUnmounted(() => {
+  stopPolling();
 });
 
 function handleDrop(e: DragEvent) {
   dragOver.value = false;
   const files = e.dataTransfer?.files;
-  if (files?.length) enqueueFiles(files);
+  if (files?.length) {
+    enqueueFiles(files);
+    startPolling();
+  }
 }
 
 function handleFileSelect(e: Event) {
   const input = e.target as HTMLInputElement;
   const files = input.files;
-  if (files?.length) enqueueFiles(files);
+  if (files?.length) {
+    enqueueFiles(files);
+    startPolling();
+  }
   input.value = '';
 }
 

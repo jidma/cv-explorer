@@ -23,9 +23,13 @@ export async function enrichCV(extracted: ExtractedCV): Promise<{ data: Extracte
 
   const response = await llm.chat(messages, {
     temperature: 0,
-    maxTokens: 4096,
+    maxTokens: 8192,
     responseFormat: 'json',
   });
+
+  if (response.finishReason === 'length') {
+    throw new Error('LLM response truncated during enrichment — resume may be too long');
+  }
 
   const enriched = JSON.parse(response.content) as ExtractedCV;
   return {

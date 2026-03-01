@@ -11,6 +11,15 @@ import { enrichCV } from './enricher';
 import { generateEmbedding } from './embedder';
 import type { ExtractedCV } from 'cv-explorer-shared';
 
+/** Validate a date string — return null if not a valid YYYY-MM-DD date */
+function sanitizeDate(d: string | null | undefined): string | null {
+  if (!d) return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return null;
+  const parsed = new Date(d);
+  if (isNaN(parsed.getTime())) return null;
+  return d;
+}
+
 const MIME_TYPES: Record<string, string> = {
   '.pdf': 'application/pdf',
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -116,8 +125,8 @@ async function storeCandidate(
         candidateId,
         company: exp.company,
         title: exp.title,
-        startDate: exp.start_date,
-        endDate: exp.end_date,
+        startDate: sanitizeDate(exp.start_date),
+        endDate: sanitizeDate(exp.end_date),
         isCurrent: exp.is_current,
         description: exp.description,
         location: exp.location,
@@ -131,8 +140,8 @@ async function storeCandidate(
         institution: edu.institution,
         degree: edu.degree,
         fieldOfStudy: edu.field_of_study,
-        startDate: edu.start_date,
-        endDate: edu.end_date,
+        startDate: sanitizeDate(edu.start_date),
+        endDate: sanitizeDate(edu.end_date),
         description: edu.description,
       });
     }
@@ -162,7 +171,7 @@ async function storeCandidate(
         candidateId,
         name: cert.name,
         issuer: cert.issuer,
-        issueDate: cert.issue_date,
+        issueDate: sanitizeDate(cert.issue_date),
       });
     }
 

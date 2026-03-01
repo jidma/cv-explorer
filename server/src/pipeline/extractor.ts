@@ -70,9 +70,13 @@ export async function extractCV(rawText: string): Promise<{ data: ExtractedCV; u
 
   const response = await llm.chat(messages, {
     temperature: 0,
-    maxTokens: 4096,
+    maxTokens: 8192,
     responseFormat: 'json',
   });
+
+  if (response.finishReason === 'length') {
+    throw new Error('LLM response truncated during extraction — resume may be too long');
+  }
 
   const parsed = JSON.parse(response.content) as ExtractedCV;
   return {
