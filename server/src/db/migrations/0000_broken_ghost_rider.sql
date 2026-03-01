@@ -75,15 +75,42 @@ CREATE TABLE "skills" (
 	"proficiency" varchar(50)
 );
 --> statement-breakpoint
+CREATE TABLE "upload_candidates" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"upload_id" uuid NOT NULL,
+	"candidate_id" uuid NOT NULL,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "uploads" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"original_filename" varchar(255) NOT NULL,
+	"mime_type" varchar(100) NOT NULL,
+	"file_size" integer NOT NULL,
+	"status" varchar(20) DEFAULT 'pending' NOT NULL,
+	"error_message" text,
+	"ingestion_cost" numeric(10, 6),
+	"ingestion_tokens" integer,
+	"file_data" "bytea",
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 ALTER TABLE "certifications" ADD CONSTRAINT "certifications_candidate_id_candidates_id_fk" FOREIGN KEY ("candidate_id") REFERENCES "public"."candidates"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "education" ADD CONSTRAINT "education_candidate_id_candidates_id_fk" FOREIGN KEY ("candidate_id") REFERENCES "public"."candidates"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "experiences" ADD CONSTRAINT "experiences_candidate_id_candidates_id_fk" FOREIGN KEY ("candidate_id") REFERENCES "public"."candidates"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "languages" ADD CONSTRAINT "languages_candidate_id_candidates_id_fk" FOREIGN KEY ("candidate_id") REFERENCES "public"."candidates"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "llm_calls" ADD CONSTRAINT "llm_calls_candidate_id_candidates_id_fk" FOREIGN KEY ("candidate_id") REFERENCES "public"."candidates"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "skills" ADD CONSTRAINT "skills_candidate_id_candidates_id_fk" FOREIGN KEY ("candidate_id") REFERENCES "public"."candidates"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "upload_candidates" ADD CONSTRAINT "upload_candidates_upload_id_uploads_id_fk" FOREIGN KEY ("upload_id") REFERENCES "public"."uploads"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "upload_candidates" ADD CONSTRAINT "upload_candidates_candidate_id_candidates_id_fk" FOREIGN KEY ("candidate_id") REFERENCES "public"."candidates"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "idx_candidates_location" ON "candidates" USING btree ("location");--> statement-breakpoint
 CREATE INDEX "idx_experiences_title" ON "experiences" USING btree ("title");--> statement-breakpoint
 CREATE INDEX "idx_llm_calls_candidate" ON "llm_calls" USING btree ("candidate_id");--> statement-breakpoint
 CREATE INDEX "idx_llm_calls_session" ON "llm_calls" USING btree ("chat_session_id");--> statement-breakpoint
 CREATE INDEX "idx_skills_name" ON "skills" USING btree ("name");--> statement-breakpoint
-CREATE INDEX "idx_skills_category" ON "skills" USING btree ("category");
+CREATE INDEX "idx_skills_category" ON "skills" USING btree ("category");--> statement-breakpoint
+CREATE INDEX "idx_upload_candidates_upload" ON "upload_candidates" USING btree ("upload_id");--> statement-breakpoint
+CREATE INDEX "idx_upload_candidates_candidate" ON "upload_candidates" USING btree ("candidate_id");--> statement-breakpoint
+CREATE INDEX "idx_uploads_status" ON "uploads" USING btree ("status");--> statement-breakpoint
+CREATE INDEX "idx_uploads_created_at" ON "uploads" USING btree ("created_at");

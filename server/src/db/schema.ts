@@ -114,6 +114,41 @@ export const certifications = pgTable(
   }
 );
 
+export const uploads = pgTable(
+  'uploads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    originalFilename: varchar('original_filename', { length: 255 }).notNull(),
+    mimeType: varchar('mime_type', { length: 100 }).notNull(),
+    fileSize: integer('file_size').notNull(),
+    status: varchar('status', { length: 20 }).notNull().default('pending'),
+    errorMessage: text('error_message'),
+    ingestionCost: numeric('ingestion_cost', { precision: 10, scale: 6 }),
+    ingestionTokens: integer('ingestion_tokens'),
+    fileData: bytea('file_data'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_uploads_status').on(table.status),
+    index('idx_uploads_created_at').on(table.createdAt),
+  ]
+);
+
+export const uploadCandidates = pgTable(
+  'upload_candidates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    uploadId: uuid('upload_id').references(() => uploads.id, { onDelete: 'cascade' }).notNull(),
+    candidateId: uuid('candidate_id').references(() => candidates.id, { onDelete: 'cascade' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_upload_candidates_upload').on(table.uploadId),
+    index('idx_upload_candidates_candidate').on(table.candidateId),
+  ]
+);
+
 export const llmCalls = pgTable(
   'llm_calls',
   {

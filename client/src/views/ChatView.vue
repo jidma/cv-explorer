@@ -29,8 +29,33 @@
           class="max-w-[80%] px-4 py-3 rounded-lg"
           :class="msg.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-800'"
         >
+          <!-- Tool calls -->
+          <div v-if="msg.toolCalls?.length" class="mb-2 space-y-1">
+            <div v-for="tc in msg.toolCalls" :key="tc.id">
+              <button
+                @click="toggleToolCall(tc.id)"
+                class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                <span v-if="tc.status === 'calling'" class="inline-block w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></span>
+                <span v-else class="text-green-500 text-sm">&#10003;</span>
+                <span class="font-mono">{{ tc.name }}</span>
+                <span class="text-gray-400 text-[10px]">{{ isToolCallExpanded(tc.id) ? '&#9660;' : '&#9654;' }}</span>
+              </button>
+              <div v-if="isToolCallExpanded(tc.id)" class="mt-1 ml-5 text-xs bg-gray-50 rounded p-2 overflow-x-auto border border-gray-100">
+                <div class="mb-1">
+                  <span class="font-semibold text-gray-600">Args: </span>
+                  <pre class="text-gray-500 whitespace-pre-wrap inline">{{ JSON.stringify(tc.arguments, null, 2) }}</pre>
+                </div>
+                <div v-if="tc.result !== undefined">
+                  <span class="font-semibold text-gray-600">Result: </span>
+                  <pre class="text-gray-500 whitespace-pre-wrap max-h-40 overflow-y-auto">{{ formatToolResult(tc.result) }}</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="whitespace-pre-wrap">{{ msg.content }}</div>
-          <div v-if="msg.role === 'assistant' && !msg.content && loading" class="flex space-x-1">
+          <div v-if="msg.role === 'assistant' && !msg.content && !msg.toolCalls?.length && loading" class="flex space-x-1">
             <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
             <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
             <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
@@ -79,6 +104,28 @@ const examples = [
   'Find developers with more than 5 years of experience',
   'List all candidates',
 ];
+
+const expandedToolCalls = ref<Set<string>>(new Set());
+
+function toggleToolCall(id: string) {
+  if (expandedToolCalls.value.has(id)) {
+    expandedToolCalls.value.delete(id);
+  } else {
+    expandedToolCalls.value.add(id);
+  }
+  // Trigger reactivity
+  expandedToolCalls.value = new Set(expandedToolCalls.value);
+}
+
+function isToolCallExpanded(id: string): boolean {
+  return expandedToolCalls.value.has(id);
+}
+
+function formatToolResult(result: unknown): string {
+  const str = JSON.stringify(result, null, 2);
+  if (str.length > 500) return str.slice(0, 500) + '\n... (truncated)';
+  return str;
+}
 
 function formatCost(cost: number): string {
   if (cost < 0.01) return `$${cost.toFixed(6)}`;

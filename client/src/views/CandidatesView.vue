@@ -2,6 +2,61 @@
   <div>
     <h1 class="text-2xl font-bold text-gray-900 mb-6">Candidates</h1>
 
+    <!-- Filter bar -->
+    <div class="mb-6 flex flex-wrap gap-3 items-end">
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Skill</label>
+        <select
+          v-model="activeFilters.skill"
+          @change="applyFilters"
+          class="block w-44 rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        >
+          <option :value="undefined">All skills</option>
+          <option v-for="s in filterOptions.skills" :key="s" :value="s">{{ s }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Location</label>
+        <select
+          v-model="activeFilters.location"
+          @change="applyFilters"
+          class="block w-44 rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        >
+          <option :value="undefined">All locations</option>
+          <option v-for="l in filterOptions.locations" :key="l" :value="l">{{ l }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Job Title</label>
+        <select
+          v-model="activeFilters.title"
+          @change="applyFilters"
+          class="block w-44 rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        >
+          <option :value="undefined">All titles</option>
+          <option v-for="t in filterOptions.titles" :key="t" :value="t">{{ t }}</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Degree</label>
+        <select
+          v-model="activeFilters.degree"
+          @change="applyFilters"
+          class="block w-44 rounded-md border-gray-300 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+        >
+          <option :value="undefined">All degrees</option>
+          <option v-for="d in filterOptions.degrees" :key="d" :value="d">{{ d }}</option>
+        </select>
+      </div>
+      <button
+        v-if="hasActiveFilters"
+        @click="clearFilters"
+        class="px-3 py-2 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-md hover:bg-gray-50"
+      >
+        Clear filters
+      </button>
+    </div>
+
     <div v-if="loading" class="text-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
       <p class="mt-2 text-gray-500">Loading candidates...</p>
@@ -150,25 +205,56 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import type { Candidate, CandidateDetail } from '../types';
+import { ref, computed, onMounted } from 'vue';
+import type { Candidate, CandidateDetail, FilterOptions, ActiveFilters } from '../types';
 
 const candidates = ref<Candidate[]>([]);
 const selected = ref<CandidateDetail | null>(null);
 const loading = ref(true);
 const showDocument = ref(false);
+const filterOptions = ref<FilterOptions>({ skills: [], locations: [], titles: [], degrees: [] });
+const activeFilters = ref<ActiveFilters>({});
+const hasActiveFilters = computed(() => Object.values(activeFilters.value).some(v => v));
 
 onMounted(async () => {
   try {
-    const res = await fetch('/api/candidates');
-    const data = await res.json();
-    candidates.value = data.candidates;
+    const [candidatesRes, filtersRes] = await Promise.all([
+      fetch('/api/candidates'),
+      fetch('/api/candidates/filters'),
+    ]);
+    const candidatesData = await candidatesRes.json();
+    candidates.value = candidatesData.candidates;
+    filterOptions.value = await filtersRes.json();
   } catch (err) {
     console.error('Failed to load candidates:', err);
   } finally {
     loading.value = false;
   }
 });
+
+async function applyFilters() {
+  loading.value = true;
+  try {
+    const params = new URLSearchParams();
+    if (activeFilters.value.skill) params.set('skill', activeFilters.value.skill);
+    if (activeFilters.value.location) params.set('location', activeFilters.value.location);
+    if (activeFilters.value.title) params.set('title', activeFilters.value.title);
+    if (activeFilters.value.degree) params.set('degree', activeFilters.value.degree);
+    const qs = params.toString();
+    const res = await fetch(`/api/candidates${qs ? '?' + qs : ''}`);
+    const data = await res.json();
+    candidates.value = data.candidates;
+  } catch (err) {
+    console.error('Failed to filter candidates:', err);
+  } finally {
+    loading.value = false;
+  }
+}
+
+function clearFilters() {
+  activeFilters.value = {};
+  applyFilters();
+}
 
 async function selectCandidate(id: string) {
   showDocument.value = false;

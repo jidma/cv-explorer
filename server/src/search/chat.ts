@@ -46,9 +46,18 @@ export interface ChatCost {
   totalTokens: number;
 }
 
+export interface ToolEvent {
+  type: 'tool_call' | 'tool_result';
+  id: string;
+  name: string;
+  arguments?: string;
+  result?: string;
+}
+
 export async function chatWithTools(
   userMessages: Array<{ role: 'user' | 'assistant'; content: string }>,
-  onChunk: (text: string) => void
+  onChunk: (text: string) => void,
+  onToolEvent?: (event: ToolEvent) => void
 ): Promise<ChatCost> {
   const llm = getLLMProvider();
   const sessionId = uuidv4();
@@ -88,7 +97,22 @@ export async function chatWithTools(
 
     // Execute tool calls and add results
     for (const toolCall of response.toolCalls) {
+      onToolEvent?.({
+        type: 'tool_call',
+        id: toolCall.id,
+        name: toolCall.name,
+        arguments: toolCall.arguments,
+      });
+
       const result = await executeToolCall(toolCall);
+
+      onToolEvent?.({
+        type: 'tool_result',
+        id: toolCall.id,
+        name: toolCall.name,
+        result,
+      });
+
       messages.push({
         role: 'tool',
         content: result,

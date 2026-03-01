@@ -1,87 +1,135 @@
 <template>
-  <div class="max-w-2xl mx-auto">
-    <h1 class="text-2xl font-bold text-gray-900 mb-6">Upload Resume</h1>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- LEFT: Upload Card -->
+    <div>
+      <h1 class="text-2xl font-bold text-gray-900 mb-6">Upload Resumes</h1>
 
-    <div
-      class="border-2 border-dashed rounded-lg p-12 text-center transition-colors"
-      :class="dragOver ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 bg-white'"
-      @dragover.prevent="dragOver = true"
-      @dragleave="dragOver = false"
-      @drop.prevent="handleDrop"
-    >
-      <div v-if="!uploading">
+      <div
+        class="border-2 border-dashed rounded-lg p-12 text-center transition-colors"
+        :class="dragOver ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 bg-white'"
+        @dragover.prevent="dragOver = true"
+        @dragleave="dragOver = false"
+        @drop.prevent="handleDrop"
+      >
         <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
         </svg>
-        <p class="mt-4 text-lg text-gray-600">Drag & drop a resume here, or</p>
+        <p class="mt-4 text-lg text-gray-600">Drag & drop resumes here, or</p>
         <label class="mt-2 inline-block cursor-pointer">
           <span class="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors">
             Browse files
           </span>
-          <input type="file" class="hidden" accept=".pdf,.docx" @change="handleFileSelect" />
+          <input type="file" class="hidden" accept=".pdf,.docx" multiple @change="handleFileSelect" />
         </label>
-        <p class="mt-2 text-sm text-gray-500">PDF or DOCX, up to 10MB</p>
+        <p class="mt-2 text-sm text-gray-500">PDF or DOCX, up to 10MB each</p>
       </div>
 
-      <div v-else class="py-4">
-        <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto"></div>
-        <p class="mt-4 text-gray-600">Processing resume...</p>
-        <p class="text-sm text-gray-500">Extracting data with AI. This may take a moment.</p>
+      <div v-if="pendingCount > 0 || processingCount > 0" class="mt-3 text-sm text-gray-500">
+        <span v-if="processingCount > 0">Processing {{ processingCount }} file{{ processingCount > 1 ? 's' : '' }}</span>
+        <span v-if="processingCount > 0 && pendingCount > 0"> &middot; </span>
+        <span v-if="pendingCount > 0">{{ pendingCount }} pending</span>
       </div>
     </div>
 
-    <div v-if="error" class="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-      <p class="text-red-700">{{ error }}</p>
-    </div>
+    <!-- RIGHT: Status Feed -->
+    <div>
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Upload History</h2>
 
-    <div v-if="result" class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-      <p class="text-green-700 font-medium">{{ result.message }}</p>
-
-      <div v-if="result.cost" class="mt-3 text-sm text-gray-600">
-        <p class="font-medium text-gray-700 mb-1">Processing cost</p>
-        <div class="flex gap-4">
-          <span>Total: {{ formatCost(result.cost.total) }}</span>
-          <span>Tokens: {{ result.cost.tokens.toLocaleString() }}</span>
-        </div>
-        <div v-if="result.cost.breakdown?.length" class="mt-2 space-y-1">
-          <div v-for="(step, i) in result.cost.breakdown" :key="i" class="flex justify-between text-xs text-gray-500 bg-white rounded px-2 py-1">
-            <span>{{ step.operation }} <span class="text-gray-400">({{ step.model }})</span></span>
-            <span>{{ formatCost(step.cost) }} &middot; {{ step.tokens.toLocaleString() }} tokens</span>
+      <div class="space-y-2 max-h-[70vh] overflow-y-auto">
+        <div
+          v-for="item in uploadList"
+          :key="item.id"
+          class="flex items-center gap-3 p-3 bg-white rounded-lg border border-gray-200"
+        >
+          <!-- Status icon -->
+          <div class="flex-shrink-0">
+            <div v-if="item.status === 'pending'" class="w-3 h-3 bg-gray-300 rounded-full"></div>
+            <div v-else-if="item.status === 'processing'" class="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <div v-else-if="item.status === 'completed'" class="text-green-500 text-sm font-bold">&#10003;</div>
+            <div v-else-if="item.status === 'error'" class="text-red-500 text-sm font-bold">&#10007;</div>
           </div>
+
+          <!-- File info -->
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-medium text-gray-900 truncate">{{ item.original_filename }}</p>
+            <p class="text-xs" :class="statusTextClass(item.status)">
+              {{ statusText(item.status) }}
+              <span v-if="item.error_message" class="text-red-500"> &mdash; {{ item.error_message }}</span>
+            </p>
+            <p v-if="item.candidates.length" class="text-xs text-gray-400 mt-0.5">
+              {{ item.candidates.map(c => c.candidate_name).join(', ') }}
+            </p>
+          </div>
+
+          <!-- Cost badge -->
+          <span v-if="item.ingestion_cost" class="text-xs text-gray-400 flex-shrink-0">{{ formatCost(item.ingestion_cost) }}</span>
+
+          <!-- Remove button for pending items -->
+          <button
+            v-if="item.status === 'pending'"
+            @click="removeUpload(item.id)"
+            class="text-gray-400 hover:text-red-500 text-lg leading-none flex-shrink-0"
+          >&times;</button>
+        </div>
+
+        <!-- Empty state -->
+        <div v-if="!uploadList.length" class="text-center py-8 text-gray-400">
+          <p class="text-sm">No uploads yet. Drop some resumes to get started.</p>
         </div>
       </div>
-
-      <router-link
-        :to="`/candidates`"
-        class="mt-3 inline-block text-indigo-600 hover:text-indigo-800 text-sm"
-      >
-        View all candidates &rarr;
-      </router-link>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useUpload } from '../composables/useUpload';
+import { ref, computed, onMounted } from 'vue';
+import { useMultiUpload } from '../composables/useMultiUpload';
+import type { Upload } from '../types';
 
-const { uploading, error, result, uploadFile } = useUpload();
+const { uploads: uploadList, isProcessing, loadUploads, enqueueFiles, removeUpload } = useMultiUpload();
 const dragOver = ref(false);
 
-function formatCost(cost: number): string {
-  if (cost < 0.01) return `$${cost.toFixed(6)}`;
-  return `$${cost.toFixed(4)}`;
-}
+const pendingCount = computed(() => uploadList.value.filter(u => u.status === 'pending').length);
+const processingCount = computed(() => uploadList.value.filter(u => u.status === 'processing').length);
+
+onMounted(() => {
+  loadUploads();
+});
 
 function handleDrop(e: DragEvent) {
   dragOver.value = false;
-  const file = e.dataTransfer?.files[0];
-  if (file) uploadFile(file);
+  const files = e.dataTransfer?.files;
+  if (files?.length) enqueueFiles(files);
 }
 
 function handleFileSelect(e: Event) {
   const input = e.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (file) uploadFile(file);
+  const files = input.files;
+  if (files?.length) enqueueFiles(files);
+  input.value = '';
+}
+
+function statusText(status: Upload['status']): string {
+  switch (status) {
+    case 'pending': return 'Waiting...';
+    case 'processing': return 'Processing with AI...';
+    case 'completed': return 'Ingested successfully';
+    case 'error': return 'Failed';
+  }
+}
+
+function statusTextClass(status: Upload['status']): string {
+  switch (status) {
+    case 'pending': return 'text-gray-400';
+    case 'processing': return 'text-indigo-500';
+    case 'completed': return 'text-green-600';
+    case 'error': return 'text-red-500';
+  }
+}
+
+function formatCost(cost: string): string {
+  const n = parseFloat(cost);
+  if (n < 0.01) return `$${n.toFixed(6)}`;
+  return `$${n.toFixed(4)}`;
 }
 </script>

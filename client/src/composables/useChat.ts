@@ -52,6 +52,22 @@ export function useChat() {
 
           if (data.type === 'text') {
             messages.value[assistantIdx].content += data.text;
+          } else if (data.type === 'tool_call') {
+            if (!messages.value[assistantIdx].toolCalls) {
+              messages.value[assistantIdx].toolCalls = [];
+            }
+            messages.value[assistantIdx].toolCalls!.push({
+              id: data.id,
+              name: data.name,
+              arguments: JSON.parse(data.arguments || '{}'),
+              status: 'calling',
+            });
+          } else if (data.type === 'tool_result') {
+            const tc = messages.value[assistantIdx].toolCalls?.find(t => t.id === data.id);
+            if (tc) {
+              try { tc.result = JSON.parse(data.result); } catch { tc.result = data.result; }
+              tc.status = 'done';
+            }
           } else if (data.type === 'done' && data.cost) {
             const cost: ChatCost = data.cost;
             messages.value[assistantIdx].cost = cost;

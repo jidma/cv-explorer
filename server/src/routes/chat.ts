@@ -16,9 +16,15 @@ router.post('/', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   try {
-    const cost = await chatWithTools(messages, (text) => {
-      res.write(`data: ${JSON.stringify({ type: 'text', text })}\n\n`);
-    });
+    const cost = await chatWithTools(
+      messages,
+      (text) => {
+        res.write(`data: ${JSON.stringify({ type: 'text', text })}\n\n`);
+      },
+      (event) => {
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+      }
+    );
 
     res.write(`data: ${JSON.stringify({ type: 'done', cost })}\n\n`);
     res.end();

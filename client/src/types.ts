@@ -61,10 +61,19 @@ export interface CandidateDetail extends Candidate {
   certifications: Certification[];
 }
 
+export interface ToolCallInfo {
+  id: string;
+  name: string;
+  arguments: Record<string, unknown>;
+  result?: unknown;
+  status: 'calling' | 'done' | 'error';
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   cost?: ChatCost;
+  toolCalls?: ToolCallInfo[];
 }
 
 export interface ChatCost {
@@ -87,4 +96,36 @@ export interface UploadResult {
   candidateId: string;
   message: string;
   cost?: UploadCost;
+}
+
+export interface FilterOptions {
+  skills: string[];
+  locations: string[];
+  titles: string[];
+  degrees: string[];
+}
+
+export interface ActiveFilters {
+  skill?: string;
+  location?: string;
+  title?: string;
+  degree?: string;
+}
+
+export interface UploadCandidate {
+  candidate_id: string;
+  candidate_name: string;
+}
+
+export interface Upload {
+  id: string;
+  original_filename: string;
+  mime_type: string;
+  file_size: number;
+  status: 'pending' | 'processing' | 'completed' | 'error';
+  error_message: string | null;
+  candidates: UploadCandidate[];
+  ingestion_cost: string | null;
+  ingestion_tokens: number | null;
+  created_at: string;
 }
