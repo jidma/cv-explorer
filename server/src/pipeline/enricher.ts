@@ -1,0 +1,32 @@
+import { getLLMProvider } from '../llm';
+import type { Message } from '../llm/types';
+import type { ExtractedCV } from 'cv-explorer-shared';
+
+const ENRICHMENT_PROMPT = `You are a data normalization expert for HR/recruitment data.
+Given a structured CV in JSON format, normalize and enrich it:
+
+1. **Skills**: Categorize each skill into one of: "programming_language", "framework", "database", "cloud", "devops", "tool", "methodology", "soft_skill", "other". Standardize names (e.g., "JS" → "JavaScript", "k8s" → "Kubernetes").
+
+2. **Job titles**: Standardize to common forms (e.g., "Sr. Dev" → "Senior Developer", "SWE" → "Software Engineer").
+
+3. **Proficiency**: For skills where proficiency can be inferred from context (e.g., listed under "Expert" section), set it to "expert", "advanced", "intermediate", or "beginner".
+
+Return the same JSON structure with the enriched data. Return ONLY valid JSON.`;
+
+export async function enrichCV(extracted: ExtractedCV): Promise<ExtractedCV> {
+  const llm = getLLMProvider();
+
+  const messages: Message[] = [
+    { role: 'system', content: ENRICHMENT_PROMPT },
+    { role: 'user', content: JSON.stringify(extracted, null, 2) },
+  ];
+
+  const response = await llm.chat(messages, {
+    temperature: 0,
+    maxTokens: 4096,
+    responseFormat: 'json',
+  });
+
+  const enriched = JSON.parse(response.content);
+  return enriched as ExtractedCV;
+}
