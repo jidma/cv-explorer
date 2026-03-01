@@ -6,6 +6,7 @@ export interface Candidate {
   location: string | null;
   summary: string | null;
   original_filename: string | null;
+  document_mime_type: string | null;
   created_at: string;
   updated_at: string;
 }

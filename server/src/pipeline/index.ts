@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { pool } from '../db/connection';
 import { parseResume } from './parser';
 import { extractCV } from './extractor';
@@ -5,8 +7,18 @@ import { enrichCV } from './enricher';
 import { generateEmbedding } from './embedder';
 import type { ExtractedCV } from 'cv-explorer-shared';
 
+const MIME_TYPES: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+};
+
 export async function processResume(filePath: string, originalFilename: string): Promise<string> {
   console.log(`[Pipeline] Starting processing: ${originalFilename}`);
+
+  // Read original file bytes for storage
+  const fileBuffer = fs.readFileSync(filePath);
+  const ext = path.extname(originalFilename).toLowerCase();
+  const mimeType = MIME_TYPES[ext] || 'application/octet-stream';
 
   // Step 1: Parse
   console.log('[Pipeline] Parsing...');
@@ -26,7 +38,7 @@ export async function processResume(filePath: string, originalFilename: string):
 
   // Step 5: Store
   console.log('[Pipeline] Storing...');
-  const candidateId = await storeCandidate(enriched, rawText, originalFilename, embedding);
+  const candidateId = await storeCandidate(enriched, rawText, originalFilename, embedding, fileBuffer, mimeType);
 
   console.log(`[Pipeline] Done. Candidate ID: ${candidateId}`);
   return candidateId;
@@ -36,7 +48,9 @@ async function storeCandidate(
   cv: ExtractedCV,
   rawText: string,
   originalFilename: string,
-  embedding: number[]
+  embedding: number[],
+  documentBuffer: Buffer,
+  documentMimeType: string
 ): Promise<string> {
   const client = await pool.connect();
   try {
@@ -45,10 +59,10 @@ async function storeCandidate(
     // Insert candidate
     const embeddingStr = `[${embedding.join(',')}]`;
     const { rows } = await client.query(
-      `INSERT INTO candidates (full_name, email, phone, location, summary, raw_text, original_filename, embedding)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::vector)
+      `INSERT INTO candidates (full_name, email, phone, location, summary, raw_text, original_filename, embedding, original_document, document_mime_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::vector, $9, $10)
        RETURNING id`,
-      [cv.full_name, cv.email, cv.phone, cv.location, cv.summary, rawText, originalFilename, embeddingStr]
+      [cv.full_name, cv.email, cv.phone, cv.location, cv.summary, rawText, originalFilename, embeddingStr, documentBuffer, documentMimeType]
     );
     const candidateId = rows[0].id;
 

@@ -126,7 +126,7 @@ export async function searchByLocation(location: string) {
 
 export async function getCandidateDetail(candidateId: string) {
   const { rows: [candidate] } = await pool.query(
-    'SELECT id, full_name, email, phone, location, summary, original_filename, created_at FROM candidates WHERE id = $1',
+    'SELECT id, full_name, email, phone, location, summary, original_filename, document_mime_type, created_at FROM candidates WHERE id = $1',
     [candidateId]
   );
 

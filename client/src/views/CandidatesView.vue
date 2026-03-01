@@ -32,7 +32,7 @@
 
     <!-- Detail modal -->
     <div v-if="selected" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" @click.self="selected = null">
-      <div class="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
+      <div class="bg-white rounded-lg max-w-5xl w-full max-h-[90vh] overflow-y-auto p-6">
         <div class="flex justify-between items-start mb-4">
           <div>
             <h2 class="text-2xl font-bold text-gray-900">{{ selected.full_name }}</h2>
@@ -45,7 +45,36 @@
           <button class="text-gray-400 hover:text-gray-600 text-2xl" @click="selected = null">&times;</button>
         </div>
 
-        <p v-if="selected.summary" class="text-gray-700 mb-6">{{ selected.summary }}</p>
+        <p v-if="selected.summary" class="text-gray-700 mb-4">{{ selected.summary }}</p>
+
+        <!-- Document actions -->
+        <div v-if="selected.document_mime_type" class="flex gap-2 mb-6">
+          <button
+            class="px-4 py-2 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
+            @click="showDocument = !showDocument"
+          >
+            {{ showDocument ? 'Hide Document' : 'View Document' }}
+          </button>
+          <a
+            :href="`/api/candidates/${selected.id}/document`"
+            download
+            class="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+          >
+            Download ({{ selected.original_filename }})
+          </a>
+        </div>
+
+        <!-- Embedded document viewer -->
+        <div v-if="showDocument && selected.document_mime_type" class="mb-6">
+          <iframe
+            v-if="selected.document_mime_type === 'application/pdf'"
+            :src="`/api/candidates/${selected.id}/document`"
+            class="w-full h-[600px] border border-gray-200 rounded-lg"
+          />
+          <div v-else class="p-4 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+            Preview not available for this file type. Use the download button above.
+          </div>
+        </div>
 
         <!-- Skills -->
         <div v-if="selected.skills?.length" class="mb-6">
@@ -119,6 +148,7 @@ import type { Candidate, CandidateDetail } from '../types';
 const candidates = ref<Candidate[]>([]);
 const selected = ref<CandidateDetail | null>(null);
 const loading = ref(true);
+const showDocument = ref(false);
 
 onMounted(async () => {
   try {
@@ -133,6 +163,7 @@ onMounted(async () => {
 });
 
 async function selectCandidate(id: string) {
+  showDocument.value = false;
   try {
     const res = await fetch(`/api/candidates/${id}`);
     selected.value = await res.json();
