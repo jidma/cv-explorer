@@ -112,6 +112,7 @@ CREATE TABLE "uploads" (
 	"ingestion_cost" numeric(10, 6),
 	"ingestion_tokens" integer,
 	"file_data" "bytea",
+	"file_hash" varchar(64),
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );

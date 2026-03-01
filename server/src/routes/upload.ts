@@ -1,7 +1,8 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import multer from 'multer';
 import path from 'path';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc, sql, inArray } from 'drizzle-orm';
 import { db } from '../db/client';
 import { uploads, candidates, uploadCandidates } from '../db/schema';
 import { triggerUploadProcessing } from '../uploadWorker';
@@ -93,32 +94,86 @@ router.post('/', upload.array('resume', 10), async (req, res) => {
       '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     };
 
-    const records = await db.insert(uploads).values(
-      files.map(f => ({
-        originalFilename: f.originalname,
-        mimeType: mimeMap[path.extname(f.originalname).toLowerCase()] || f.mimetype,
-        fileSize: f.size,
-        status: 'pending',
-        fileData: f.buffer,
-      }))
-    ).returning({
-      id: uploads.id,
-      original_filename: uploads.originalFilename,
-      status: uploads.status,
-      created_at: uploads.createdAt,
-    });
+    // Compute MD5 hash for each file
+    const filesWithHash = files.map(f => ({
+      file: f,
+      hash: crypto.createHash('md5').update(f.buffer).digest('hex'),
+    }));
 
-    // Trigger server-side background processing
-    triggerUploadProcessing();
+    // Check for existing hashes
+    const hashes = filesWithHash.map(f => f.hash);
+    const existing = await db
+      .select({ fileHash: uploads.fileHash })
+      .from(uploads)
+      .where(inArray(uploads.fileHash, hashes));
+    const existingHashes = new Set(existing.map(r => r.fileHash));
 
-    res.json({ uploads: records });
+    // Split into new and skipped
+    const newFiles = filesWithHash.filter(f => !existingHashes.has(f.hash));
+    const skipped = filesWithHash
+      .filter(f => existingHashes.has(f.hash))
+      .map(f => f.file.originalname);
+
+    let records: Array<{ id: string; original_filename: string; status: string; created_at: Date }> = [];
+
+    if (newFiles.length > 0) {
+      records = await db.insert(uploads).values(
+        newFiles.map(({ file: f, hash }) => ({
+          originalFilename: f.originalname,
+          mimeType: mimeMap[path.extname(f.originalname).toLowerCase()] || f.mimetype,
+          fileSize: f.size,
+          status: 'pending',
+          fileData: f.buffer,
+          fileHash: hash,
+        }))
+      ).returning({
+        id: uploads.id,
+        original_filename: uploads.originalFilename,
+        status: uploads.status,
+        created_at: uploads.createdAt,
+      });
+
+      // Trigger server-side background processing
+      triggerUploadProcessing();
+    }
+
+    res.json({ uploads: records, skipped });
   } catch (err) {
     console.error('Error creating upload records:', err);
     res.status(500).json({ error: 'Failed to create upload records' });
   }
 });
 
-// DELETE /api/uploads/:id — remove a pending upload
+// POST /api/uploads/:id/retry — retry a failed upload
+router.post('/:id/retry', async (req, res) => {
+  try {
+    const [record] = await db
+      .select({ status: uploads.status })
+      .from(uploads)
+      .where(eq(uploads.id, req.params.id));
+
+    if (!record) {
+      return res.status(404).json({ error: 'Upload not found' });
+    }
+
+    if (record.status !== 'error') {
+      return res.status(400).json({ error: 'Can only retry failed uploads' });
+    }
+
+    await db.update(uploads)
+      .set({ status: 'pending', errorMessage: null, updatedAt: new Date() })
+      .where(eq(uploads.id, req.params.id));
+
+    triggerUploadProcessing();
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Error retrying upload:', err);
+    res.status(500).json({ error: 'Failed to retry upload' });
+  }
+});
+
+// DELETE /api/uploads/:id — remove an upload
 router.delete('/:id', async (req, res) => {
   try {
     const [record] = await db

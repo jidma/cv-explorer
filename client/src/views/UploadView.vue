@@ -24,6 +24,12 @@
         <p class="mt-2 text-sm text-gray-500">PDF or DOCX, up to 10MB each</p>
       </div>
 
+      <!-- Skipped files banner -->
+      <div v-if="skippedFiles.length" class="mt-3 flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+        <span>{{ skippedFiles.length }} file{{ skippedFiles.length > 1 ? 's' : '' }} skipped (already uploaded): {{ skippedFiles.join(', ') }}</span>
+        <button @click="clearSkipped" class="ml-auto text-amber-500 hover:text-amber-700">&times;</button>
+      </div>
+
       <div v-if="pendingCount > 0 || processingCount > 0" class="mt-3 text-sm text-gray-500">
         <span v-if="processingCount > 0">Processing {{ processingCount }} file{{ processingCount > 1 ? 's' : '' }}</span>
         <span v-if="processingCount > 0 && pendingCount > 0"> &middot; </span>
@@ -64,12 +70,24 @@
           <!-- Cost badge -->
           <span v-if="item.ingestion_cost" class="text-xs text-gray-400 flex-shrink-0">{{ formatCost(item.ingestion_cost) }}</span>
 
-          <!-- Remove button for pending items -->
-          <button
-            v-if="item.status === 'pending'"
-            @click="removeUpload(item.id)"
-            class="text-gray-400 hover:text-red-500 text-lg leading-none flex-shrink-0"
-          >&times;</button>
+          <!-- Action buttons -->
+          <div class="flex items-center gap-1 flex-shrink-0">
+            <!-- Retry button for errored uploads -->
+            <button
+              v-if="item.status === 'error'"
+              @click="retryUpload(item.id)"
+              class="text-xs text-indigo-500 hover:text-indigo-700 px-1.5 py-0.5 rounded hover:bg-indigo-50 transition-colors"
+              title="Retry"
+            >Retry</button>
+
+            <!-- Delete button for non-processing uploads -->
+            <button
+              v-if="item.status !== 'processing'"
+              @click="removeUpload(item.id)"
+              class="text-gray-400 hover:text-red-500 text-lg leading-none"
+              title="Delete"
+            >&times;</button>
+          </div>
         </div>
 
         <!-- Empty state -->
@@ -86,7 +104,11 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { useMultiUpload } from '../composables/useMultiUpload';
 import type { Upload } from '../types';
 
-const { uploads: uploadList, loadUploads, enqueueFiles, removeUpload, startPolling, stopPolling, ensurePolling } = useMultiUpload();
+const {
+  uploads: uploadList, skippedFiles,
+  loadUploads, enqueueFiles, removeUpload, retryUpload, clearSkipped,
+  startPolling, stopPolling, ensurePolling,
+} = useMultiUpload();
 const dragOver = ref(false);
 
 const pendingCount = computed(() => uploadList.value.filter(u => u.status === 'pending').length);

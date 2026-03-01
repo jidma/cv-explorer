@@ -1,5 +1,5 @@
 {
-  "id": "42815c80-98f2-4f95-94d6-24b992444818",
+  "id": "2854c5a2-aa34-4597-8b48-d4c0fe88f4e5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -940,6 +940,12 @@
         "file_data": {
           "name": "file_data",
           "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "file_hash": {
+          "name": "file_hash",
+          "type": "varchar(64)",
           "primaryKey": false,
           "notNull": false
         },

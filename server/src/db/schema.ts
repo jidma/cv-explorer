@@ -126,6 +126,7 @@ export const uploads = pgTable(
     ingestionCost: numeric('ingestion_cost', { precision: 10, scale: 6 }),
     ingestionTokens: integer('ingestion_tokens'),
     fileData: bytea('file_data'),
+    fileHash: varchar('file_hash', { length: 64 }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
   },

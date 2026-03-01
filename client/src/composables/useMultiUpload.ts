@@ -3,6 +3,7 @@ import type { Upload } from '../types';
 
 // Module-level state so it survives route navigation
 const uploads = ref<Upload[]>([]);
+const skippedFiles = ref<string[]>([]);
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let pollListeners = 0;
 
@@ -24,6 +25,8 @@ export function useMultiUpload() {
       formData.append('resume', file);
     }
 
+    skippedFiles.value = [];
+
     try {
       const res = await fetch('/api/uploads', {
         method: 'POST',
@@ -34,6 +37,11 @@ export function useMultiUpload() {
         const data = await res.json().catch(() => ({ error: 'Upload failed' }));
         console.error('Failed to enqueue files:', data.error);
         return;
+      }
+
+      const data = await res.json();
+      if (data.skipped?.length) {
+        skippedFiles.value = data.skipped;
       }
 
       // Refresh list to show new pending items
@@ -50,6 +58,20 @@ export function useMultiUpload() {
     } catch (err) {
       console.error('Failed to remove upload:', err);
     }
+  }
+
+  async function retryUpload(id: string) {
+    try {
+      await fetch(`/api/uploads/${id}/retry`, { method: 'POST' });
+      await loadUploads();
+      startPolling();
+    } catch (err) {
+      console.error('Failed to retry upload:', err);
+    }
+  }
+
+  function clearSkipped() {
+    skippedFiles.value = [];
   }
 
   const hasActiveUploads = computed(() =>
@@ -85,5 +107,9 @@ export function useMultiUpload() {
     }
   }
 
-  return { uploads, hasActiveUploads, loadUploads, enqueueFiles, removeUpload, startPolling, stopPolling, ensurePolling };
+  return {
+    uploads, skippedFiles, hasActiveUploads,
+    loadUploads, enqueueFiles, removeUpload, retryUpload, clearSkipped,
+    startPolling, stopPolling, ensurePolling,
+  };
 }
