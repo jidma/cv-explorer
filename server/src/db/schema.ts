@@ -149,12 +149,41 @@ export const uploadCandidates = pgTable(
   ]
 );
 
+export const chatSessions = pgTable(
+  'chat_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    title: varchar('title', { length: 255 }),
+    totalCost: numeric('total_cost', { precision: 10, scale: 6 }).default('0'),
+    totalTokens: integer('total_tokens').default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  }
+);
+
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sessionId: uuid('session_id').references(() => chatSessions.id, { onDelete: 'cascade' }).notNull(),
+    role: varchar('role', { length: 20 }).notNull(),
+    content: text('content').notNull(),
+    cost: numeric('cost', { precision: 10, scale: 6 }),
+    tokens: integer('tokens'),
+    toolCalls: text('tool_calls'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index('idx_chat_messages_session').on(table.sessionId),
+  ]
+);
+
 export const llmCalls = pgTable(
   'llm_calls',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     candidateId: uuid('candidate_id').references(() => candidates.id, { onDelete: 'set null' }),
-    chatSessionId: varchar('chat_session_id', { length: 100 }),
+    chatSessionId: uuid('chat_session_id').references(() => chatSessions.id, { onDelete: 'set null' }),
     operation: varchar('operation', { length: 50 }).notNull(),
     model: varchar('model', { length: 100 }).notNull(),
     promptTokens: integer('prompt_tokens').notNull().default(0),

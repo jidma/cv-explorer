@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import { getLLMProvider, calculateCost } from '../llm';
 import type { Message, ToolCall, TokenUsage } from '../llm/types';
 import { db } from '../db/client';
@@ -56,11 +55,11 @@ export interface ToolEvent {
 
 export async function chatWithTools(
   userMessages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  sessionId: string,
   onChunk: (text: string) => void,
   onToolEvent?: (event: ToolEvent) => void
 ): Promise<ChatCost> {
   const llm = getLLMProvider();
-  const sessionId = uuidv4();
   let totalCost = 0;
   let totalTokens = 0;
 

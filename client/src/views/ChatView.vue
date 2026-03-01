@@ -1,100 +1,146 @@
 <template>
-  <div class="max-w-3xl mx-auto flex flex-col h-[calc(100vh-10rem)]">
-    <h1 class="text-2xl font-bold text-gray-900 mb-4">Ask about CVs</h1>
+  <div class="flex h-[calc(100vh-10rem)] gap-4">
+    <!-- LEFT: Session Sidebar -->
+    <div class="w-64 flex-shrink-0 flex flex-col">
+      <button
+        @click="handleNewChat"
+        class="w-full px-4 py-2 mb-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
+      >
+        + New Chat
+      </button>
 
-    <!-- Messages -->
-    <div ref="messagesContainer" class="flex-1 overflow-y-auto space-y-4 mb-4">
-      <div v-if="messages.length === 0" class="text-center text-gray-500 py-12">
-        <p class="text-lg">Ask me anything about your candidates</p>
-        <p class="mt-2 text-sm">Examples:</p>
-        <div class="mt-3 space-y-2">
+      <div class="flex-1 overflow-y-auto space-y-1">
+        <div
+          v-for="session in sessions"
+          :key="session.id"
+          class="group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors text-sm"
+          :class="sessionId === session.id ? 'bg-indigo-50 border border-indigo-200' : 'hover:bg-gray-50 border border-transparent'"
+          @click="handleLoadSession(session.id)"
+        >
+          <div class="flex-1 min-w-0">
+            <p class="font-medium text-gray-900 truncate">{{ session.title || 'Untitled' }}</p>
+            <p class="text-xs text-gray-400">
+              {{ formatDate(session.updated_at) }}
+              <span v-if="session.total_cost"> &middot; {{ formatCost(parseFloat(session.total_cost)) }}</span>
+            </p>
+          </div>
           <button
-            v-for="example in examples"
-            :key="example"
-            class="block mx-auto px-4 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-            @click="input = example"
-          >
-            {{ example }}
-          </button>
+            @click.stop="handleDeleteSession(session.id)"
+            class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 text-lg leading-none flex-shrink-0 transition-opacity"
+          >&times;</button>
+        </div>
+
+        <div v-if="!sessions.length" class="text-center py-4 text-gray-400 text-sm">
+          No conversations yet
         </div>
       </div>
+    </div>
 
-      <div
-        v-for="(msg, i) in messages"
-        :key="i"
-        class="flex"
-        :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
-      >
+    <!-- RIGHT: Chat Area -->
+    <div class="flex-1 flex flex-col min-w-0">
+      <h1 class="text-2xl font-bold text-gray-900 mb-4">Ask about CVs</h1>
+
+      <!-- Messages -->
+      <div ref="messagesContainer" class="flex-1 overflow-y-auto space-y-4 mb-4">
+        <div v-if="messages.length === 0" class="text-center text-gray-500 py-12">
+          <p class="text-lg">Ask me anything about your candidates</p>
+          <p class="mt-2 text-sm">Examples:</p>
+          <div class="mt-3 space-y-2">
+            <button
+              v-for="example in examples"
+              :key="example"
+              class="block mx-auto px-4 py-2 text-sm bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+              @click="input = example"
+            >
+              {{ example }}
+            </button>
+          </div>
+        </div>
+
         <div
-          class="max-w-[80%] px-4 py-3 rounded-lg"
-          :class="msg.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-800'"
+          v-for="(msg, i) in messages"
+          :key="i"
+          class="flex"
+          :class="msg.role === 'user' ? 'justify-end' : 'justify-start'"
         >
-          <!-- Tool calls -->
-          <div v-if="msg.toolCalls?.length" class="mb-2 space-y-1">
-            <div v-for="tc in msg.toolCalls" :key="tc.id">
-              <button
-                @click="toggleToolCall(tc.id)"
-                class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
-              >
-                <span v-if="tc.status === 'calling'" class="inline-block w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></span>
-                <span v-else class="text-green-500 text-sm">&#10003;</span>
-                <span class="font-mono">{{ tc.name }}</span>
-                <span class="text-gray-400 text-[10px]">{{ isToolCallExpanded(tc.id) ? '&#9660;' : '&#9654;' }}</span>
-              </button>
-              <div v-if="isToolCallExpanded(tc.id)" class="mt-1 ml-5 text-xs bg-gray-50 rounded p-2 overflow-x-auto border border-gray-100">
-                <div class="mb-1">
-                  <span class="font-semibold text-gray-600">Args: </span>
-                  <pre class="text-gray-500 whitespace-pre-wrap inline">{{ JSON.stringify(tc.arguments, null, 2) }}</pre>
-                </div>
-                <div v-if="tc.result !== undefined">
-                  <span class="font-semibold text-gray-600">Result: </span>
-                  <pre class="text-gray-500 whitespace-pre-wrap max-h-40 overflow-y-auto">{{ formatToolResult(tc.result) }}</pre>
+          <div
+            class="max-w-[80%] px-4 py-3 rounded-lg"
+            :class="msg.role === 'user' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-800'"
+          >
+            <!-- Tool calls -->
+            <div v-if="msg.toolCalls?.length" class="mb-2 space-y-1">
+              <div v-for="tc in msg.toolCalls" :key="tc.id">
+                <button
+                  @click="toggleToolCall(tc.id)"
+                  class="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  <span v-if="tc.status === 'calling'" class="inline-block w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></span>
+                  <span v-else class="text-green-500 text-sm">&#10003;</span>
+                  <span class="font-mono">{{ tc.name }}</span>
+                  <span class="text-gray-400 text-[10px]">{{ isToolCallExpanded(tc.id) ? '&#9660;' : '&#9654;' }}</span>
+                </button>
+                <div v-if="isToolCallExpanded(tc.id)" class="mt-1 ml-5 text-xs bg-gray-50 rounded p-2 overflow-x-auto border border-gray-100">
+                  <div class="mb-1">
+                    <span class="font-semibold text-gray-600">Args: </span>
+                    <pre class="text-gray-500 whitespace-pre-wrap inline">{{ JSON.stringify(tc.arguments, null, 2) }}</pre>
+                  </div>
+                  <div v-if="tc.result !== undefined">
+                    <span class="font-semibold text-gray-600">Result: </span>
+                    <pre class="text-gray-500 whitespace-pre-wrap max-h-40 overflow-y-auto">{{ formatToolResult(tc.result) }}</pre>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div class="whitespace-pre-wrap">{{ msg.content }}</div>
-          <div v-if="msg.role === 'assistant' && !msg.content && !msg.toolCalls?.length && loading" class="flex space-x-1">
-            <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
-            <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
-            <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
-          </div>
-          <div v-if="msg.cost" class="mt-1 text-xs opacity-60">
-            {{ formatCost(msg.cost.totalCost) }} &middot; {{ msg.cost.totalTokens.toLocaleString() }} tokens
+            <div class="whitespace-pre-wrap">{{ msg.content }}</div>
+            <div v-if="msg.role === 'assistant' && !msg.content && !msg.toolCalls?.length && loading" class="flex space-x-1">
+              <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+              <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+              <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+            </div>
+            <div v-if="msg.cost" class="mt-1 text-xs opacity-60">
+              {{ formatCost(msg.cost.totalCost) }} &middot; {{ msg.cost.totalTokens.toLocaleString() }} tokens
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Input -->
-    <div class="flex gap-2">
-      <input
-        v-model="input"
-        type="text"
-        placeholder="Ask about your candidates..."
-        class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-        :disabled="loading"
-        @keydown.enter="send"
-      />
-      <button
-        class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-        :disabled="loading || !input.trim()"
-        @click="send"
-      >
-        Send
-      </button>
-    </div>
+      <!-- Input -->
+      <div class="flex gap-2">
+        <input
+          v-model="input"
+          type="text"
+          placeholder="Ask about your candidates..."
+          class="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+          :disabled="loading"
+          @keydown.enter="send"
+        />
+        <button
+          class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          :disabled="loading || !input.trim()"
+          @click="send"
+        >
+          Send
+        </button>
+      </div>
 
-    <div v-if="error" class="mt-2 text-red-600 text-sm">{{ error }}</div>
+      <div v-if="error" class="mt-2 text-red-600 text-sm">{{ error }}</div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch } from 'vue';
+import { ref, nextTick, watch, onMounted } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { useChat } from '../composables/useChat';
 
-const { messages, loading, error, sendMessage, lastCost } = useChat();
+const route = useRoute();
+const router = useRouter();
+const {
+  messages, sessions, sessionId, loading, error,
+  loadSessions, loadSession, newChat, sendMessage, deleteSession,
+} = useChat();
+
 const input = ref('');
 const messagesContainer = ref<HTMLElement>();
 
@@ -107,13 +153,45 @@ const examples = [
 
 const expandedToolCalls = ref<Set<string>>(new Set());
 
+onMounted(async () => {
+  await loadSessions();
+
+  // If URL has a session ID, load it
+  const urlSessionId = route.params.sessionId as string | undefined;
+  if (urlSessionId && urlSessionId !== sessionId.value) {
+    await loadSession(urlSessionId);
+  }
+});
+
+// Sync URL when session changes
+watch(sessionId, (id) => {
+  const currentParam = route.params.sessionId as string | undefined;
+  if (id && id !== currentParam) {
+    router.replace(`/chat/${id}`);
+  } else if (!id && currentParam) {
+    router.replace('/chat');
+  }
+});
+
+function handleNewChat() {
+  newChat();
+  router.replace('/chat');
+}
+
+async function handleLoadSession(id: string) {
+  await loadSession(id);
+}
+
+async function handleDeleteSession(id: string) {
+  await deleteSession(id);
+}
+
 function toggleToolCall(id: string) {
   if (expandedToolCalls.value.has(id)) {
     expandedToolCalls.value.delete(id);
   } else {
     expandedToolCalls.value.add(id);
   }
-  // Trigger reactivity
   expandedToolCalls.value = new Set(expandedToolCalls.value);
 }
 
@@ -130,6 +208,21 @@ function formatToolResult(result: unknown): string {
 function formatCost(cost: number): string {
   if (cost < 0.01) return `$${cost.toFixed(6)}`;
   return `$${cost.toFixed(4)}`;
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return d.toLocaleDateString();
 }
 
 async function send() {

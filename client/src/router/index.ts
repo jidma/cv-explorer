@@ -8,7 +8,7 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/upload' },
     { path: '/upload', component: UploadView },
-    { path: '/chat', component: ChatView },
+    { path: '/chat/:sessionId?', component: ChatView },
     { path: '/candidates', component: CandidatesView },
   ],
 });

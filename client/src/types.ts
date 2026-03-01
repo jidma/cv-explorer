@@ -79,6 +79,17 @@ export interface ChatMessage {
 export interface ChatCost {
   totalCost: number;
   totalTokens: number;
+  sessionId: string;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string | null;
+  total_cost: string | null;
+  total_tokens: number | null;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface UploadCost {

@@ -1,11 +1,65 @@
 import { ref } from 'vue';
-import type { ChatMessage, ChatCost } from '../types';
+import type { ChatMessage, ChatCost, ChatSession } from '../types';
+
+// Module-level state so it survives route navigation
+const messages = ref<ChatMessage[]>([]);
+const sessions = ref<ChatSession[]>([]);
+const sessionId = ref<string | null>(null);
+const loading = ref(false);
+const error = ref<string | null>(null);
+const lastCost = ref<ChatCost | null>(null);
 
 export function useChat() {
-  const messages = ref<ChatMessage[]>([]);
-  const loading = ref(false);
-  const error = ref<string | null>(null);
-  const lastCost = ref<ChatCost | null>(null);
+
+  async function loadSessions() {
+    try {
+      const res = await fetch('/api/chat/sessions');
+      const data = await res.json();
+      sessions.value = data.sessions ?? [];
+    } catch (err) {
+      console.error('Failed to load chat sessions:', err);
+    }
+  }
+
+  async function loadSession(id: string) {
+    try {
+      const res = await fetch(`/api/chat/sessions/${id}`);
+      if (!res.ok) throw new Error('Session not found');
+      const data = await res.json();
+
+      sessionId.value = id;
+      messages.value = (data.messages ?? []).map((m: Record<string, unknown>) => ({
+        role: m.role as string,
+        content: m.content as string,
+        cost: m.cost ? { totalCost: parseFloat(m.cost as string), totalTokens: m.tokens as number, sessionId: id } : undefined,
+        toolCalls: m.tool_calls ? JSON.parse(m.tool_calls as string) : undefined,
+      }));
+      lastCost.value = null;
+      error.value = null;
+    } catch (err) {
+      console.error('Failed to load session:', err);
+      error.value = 'Failed to load conversation';
+    }
+  }
+
+  async function deleteSession(id: string) {
+    try {
+      await fetch(`/api/chat/sessions/${id}`, { method: 'DELETE' });
+      if (sessionId.value === id) {
+        newChat();
+      }
+      await loadSessions();
+    } catch (err) {
+      console.error('Failed to delete session:', err);
+    }
+  }
+
+  function newChat() {
+    sessionId.value = null;
+    messages.value = [];
+    lastCost.value = null;
+    error.value = null;
+  }
 
   async function sendMessage(content: string) {
     error.value = null;
@@ -21,6 +75,7 @@ export function useChat() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          sessionId: sessionId.value,
           messages: messages.value.slice(0, -1).map(m => ({
             role: m.role,
             content: m.content,
@@ -72,11 +127,18 @@ export function useChat() {
             const cost: ChatCost = data.cost;
             messages.value[assistantIdx].cost = cost;
             lastCost.value = cost;
+            // Capture session ID from server (for new sessions)
+            if (cost.sessionId) {
+              sessionId.value = cost.sessionId;
+            }
           } else if (data.type === 'error') {
             error.value = data.message;
           }
         }
       }
+
+      // Refresh sessions list after a successful message
+      await loadSessions();
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to send message';
       messages.value.pop();
@@ -85,10 +147,8 @@ export function useChat() {
     }
   }
 
-  function clearMessages() {
-    messages.value = [];
-    lastCost.value = null;
-  }
-
-  return { messages, loading, error, lastCost, sendMessage, clearMessages };
+  return {
+    messages, sessions, sessionId, loading, error, lastCost,
+    loadSessions, loadSession, deleteSession, newChat, sendMessage,
+  };
 }
