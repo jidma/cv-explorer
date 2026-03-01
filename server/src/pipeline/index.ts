@@ -41,22 +41,32 @@ export async function processResume(filePath: string, originalFilename: string):
   const ext = path.extname(originalFilename).toLowerCase();
   const mimeType = MIME_TYPES[ext] || 'application/octet-stream';
 
+  const pipelineStart = Date.now();
+
   // Step 1: Parse
-  console.log('[Pipeline] Parsing...');
+  console.log('[Pipeline] Step 1/5: Parsing document...');
+  let stepStart = Date.now();
   const rawText = await parseResume(filePath);
+  console.log(`[Pipeline] Parsed ${rawText.length} chars in ${Date.now() - stepStart}ms`);
 
   // Step 2: Extract
-  console.log('[Pipeline] Extracting...');
+  console.log('[Pipeline] Step 2/5: Extracting structured data via LLM...');
+  stepStart = Date.now();
   const extraction = await extractCV(rawText);
   calls.push(extraction.usage);
+  console.log(`[Pipeline] Extracted in ${Date.now() - stepStart}ms (${extraction.usage.model}, ${extraction.usage.usage.totalTokens} tokens, $${extraction.usage.cost.toFixed(6)})`);
+  console.log(`[Pipeline]   → ${extraction.data.full_name} | ${extraction.data.experiences?.length ?? 0} exp, ${extraction.data.skills?.length ?? 0} skills`);
 
   // Step 3: Enrich
-  console.log('[Pipeline] Enriching...');
+  console.log('[Pipeline] Step 3/5: Enriching & normalizing via LLM...');
+  stepStart = Date.now();
   const enrichment = await enrichCV(extraction.data);
   calls.push(enrichment.usage);
+  console.log(`[Pipeline] Enriched in ${Date.now() - stepStart}ms (${enrichment.usage.model}, ${enrichment.usage.usage.totalTokens} tokens, $${enrichment.usage.cost.toFixed(6)})`);
 
   // Step 4: Embed
-  console.log('[Pipeline] Generating embedding...');
+  console.log('[Pipeline] Step 4/5: Generating embedding...');
+  stepStart = Date.now();
   const embedResult = await generateEmbedding(enrichment.data, rawText);
   const embedUsage: LLMUsageRecord = {
     model: embedResult.model,
@@ -65,22 +75,24 @@ export async function processResume(filePath: string, originalFilename: string):
     operation: 'embedding',
   };
   calls.push(embedUsage);
+  console.log(`[Pipeline] Embedded in ${Date.now() - stepStart}ms (${embedResult.model}, ${embedResult.usage.totalTokens} tokens, $${embedUsage.cost.toFixed(6)})`);
 
   // Totals
   const totalCost = calls.reduce((sum, c) => sum + c.cost, 0);
   const totalTokens = calls.reduce((sum, c) => sum + c.usage.totalTokens, 0);
 
-  console.log(`[Pipeline] Cost: $${totalCost.toFixed(6)} | Tokens: ${totalTokens}`);
-
   // Step 5: Store
-  console.log('[Pipeline] Storing...');
+  console.log('[Pipeline] Step 5/5: Storing in database...');
+  stepStart = Date.now();
   const candidateId = await storeCandidate(
     enrichment.data, rawText, originalFilename,
     embedResult.embedding, fileBuffer, mimeType,
     totalCost, totalTokens, calls
   );
+  console.log(`[Pipeline] Stored in ${Date.now() - stepStart}ms`);
 
-  console.log(`[Pipeline] Done. Candidate ID: ${candidateId}`);
+  const elapsed = ((Date.now() - pipelineStart) / 1000).toFixed(1);
+  console.log(`[Pipeline] Done in ${elapsed}s | ${originalFilename} → ${enrichment.data.full_name} (${candidateId}) | $${totalCost.toFixed(6)} | ${totalTokens} tokens`);
   return { candidateId, totalCost, totalTokens, calls };
 }
 

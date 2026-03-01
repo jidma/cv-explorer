@@ -3,19 +3,28 @@ import type { LLMProvider, Message, ChatOptions, ChatResponse, StreamChunk, Tool
 
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI;
-  private defaultModel = 'gpt-4o';
+  private defaultModel = 'o4-mini';
   private embeddingModel = 'text-embedding-3-small';
+
+  // o-series models use different parameters
+  private isReasoningModel(model: string): boolean {
+    return /^o\d/.test(model);
+  }
 
   constructor(apiKey: string) {
     this.client = new OpenAI({ apiKey });
   }
 
   async chat(messages: Message[], options: ChatOptions = {}): Promise<ChatResponse> {
+    const requestModel = options.model || this.defaultModel;
+    const reasoning = this.isReasoningModel(requestModel);
+
     const params: OpenAI.ChatCompletionCreateParamsNonStreaming = {
-      model: options.model || this.defaultModel,
+      model: requestModel,
       messages: this.toOpenAIMessages(messages),
-      temperature: options.temperature ?? 0.1,
-      max_tokens: options.maxTokens ?? 4096,
+      ...(reasoning
+        ? { max_completion_tokens: options.maxTokens ?? 8192, reasoning_effort: 'low' as const }
+        : { temperature: options.temperature ?? 0.1, max_tokens: options.maxTokens ?? 4096 }),
     };
 
     if (options.tools?.length) {
@@ -26,9 +35,9 @@ export class OpenAIProvider implements LLMProvider {
       params.response_format = { type: 'json_object' };
     }
 
-    const response = await this.client.chat.completions.create(params);
+    const response = await this.client.chat.completions.create(params as OpenAI.ChatCompletionCreateParamsNonStreaming);
     const choice = response.choices[0];
-    const model = response.model || options.model || this.defaultModel;
+    const responseModel = response.model || requestModel;
 
     return {
       content: choice.message.content || '',
@@ -43,26 +52,29 @@ export class OpenAIProvider implements LLMProvider {
         completionTokens: response.usage?.completion_tokens ?? 0,
         totalTokens: response.usage?.total_tokens ?? 0,
       },
-      model,
+      model: responseModel,
     };
   }
 
   async *chatStream(messages: Message[], options: ChatOptions = {}): AsyncIterable<StreamChunk> {
+    const requestModel = options.model || this.defaultModel;
+    const reasoning = this.isReasoningModel(requestModel);
+
     const params: OpenAI.ChatCompletionCreateParamsStreaming = {
-      model: options.model || this.defaultModel,
+      model: requestModel,
       messages: this.toOpenAIMessages(messages),
-      temperature: options.temperature ?? 0.1,
-      max_tokens: options.maxTokens ?? 4096,
       stream: true,
       stream_options: { include_usage: true },
+      ...(reasoning
+        ? { max_completion_tokens: options.maxTokens ?? 8192, reasoning_effort: 'low' as const }
+        : { temperature: options.temperature ?? 0.1, max_tokens: options.maxTokens ?? 4096 }),
     };
 
     if (options.tools?.length) {
       params.tools = this.toOpenAITools(options.tools);
     }
 
-    const stream = await this.client.chat.completions.create(params);
-    const model = options.model || this.defaultModel;
+    const stream = await this.client.chat.completions.create(params as OpenAI.ChatCompletionCreateParamsStreaming);
 
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta;
@@ -94,7 +106,7 @@ export class OpenAIProvider implements LLMProvider {
           completionTokens: chunk.usage.completion_tokens,
           totalTokens: chunk.usage.total_tokens,
         } : undefined;
-        yield { type: 'done', usage, model };
+        yield { type: 'done', usage, model: requestModel };
       }
     }
   }
