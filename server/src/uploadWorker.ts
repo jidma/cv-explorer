@@ -88,16 +88,27 @@ async function processLoop(): Promise<void> {
 
       console.log(`[worker] Completed upload ${id} → candidate ${result.candidateId}`);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Processing failed';
+      const rawMsg = err instanceof Error ? err.message : 'Processing failed';
+      // Strip null bytes (PostgreSQL rejects \x00 in text) and truncate
+      const errorMsg = rawMsg.replace(/\x00/g, '').slice(0, 500);
       console.error(`[worker] Failed upload ${id}:`, errorMsg);
 
-      await db.update(uploads)
-        .set({
-          status: 'error',
-          errorMessage: errorMsg,
-          updatedAt: new Date(),
-        })
-        .where(eq(uploads.id, id));
+      try {
+        await db.update(uploads)
+          .set({
+            status: 'error',
+            errorMessage: errorMsg,
+            updatedAt: new Date(),
+          })
+          .where(eq(uploads.id, id));
+      } catch (updateErr) {
+        console.error(`[worker] Failed to store error for upload ${id}:`, updateErr);
+        // Last resort: set error status with generic message
+        await db.update(uploads)
+          .set({ status: 'error', errorMessage: 'Processing failed (see server logs)', updatedAt: new Date() })
+          .where(eq(uploads.id, id))
+          .catch(() => {}); // swallow if this also fails
+      }
     } finally {
       try { fs.unlinkSync(tmpPath); } catch {}
     }

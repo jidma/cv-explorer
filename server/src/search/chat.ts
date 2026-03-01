@@ -62,15 +62,21 @@ export async function chatWithTools(
   const llm = getLLMProvider();
   let totalCost = 0;
   let totalTokens = 0;
+  const chatStart = Date.now();
 
   const messages: Message[] = [
     { role: 'system', content: SYSTEM_PROMPT },
     ...userMessages,
   ];
 
+  console.log(`[Chat] Processing ${userMessages.length} message(s) in session ${sessionId}`);
+
   // Tool use loop — keep calling tools until the LLM generates a final text response
   const MAX_ITERATIONS = 5;
   for (let i = 0; i < MAX_ITERATIONS; i++) {
+    console.log(`[Chat] Tool loop iteration ${i + 1}/${MAX_ITERATIONS}...`);
+    const iterStart = Date.now();
+
     const response = await llm.chat(messages, {
       tools: searchTools,
       maxTokens: 4096,
@@ -83,9 +89,14 @@ export async function chatWithTools(
 
     await logLLMCall(sessionId, 'chat_tool_use', response.model, response.usage, callCost);
 
+    console.log(`[Chat] LLM call in ${Date.now() - iterStart}ms (${response.model}, ${response.usage.totalTokens} tokens, $${callCost.toFixed(6)})`);
+
     if (response.toolCalls.length === 0) {
+      console.log('[Chat] No tool calls, proceeding to stream response');
       break;
     }
+
+    console.log(`[Chat] ${response.toolCalls.length} tool call(s): ${response.toolCalls.map(tc => tc.name).join(', ')}`);
 
     // Add assistant message WITH tool_calls so providers can serialize them
     messages.push({
@@ -103,7 +114,9 @@ export async function chatWithTools(
         arguments: toolCall.arguments,
       });
 
+      const toolStart = Date.now();
       const result = await executeToolCall(toolCall);
+      console.log(`[Chat] Tool ${toolCall.name} executed in ${Date.now() - toolStart}ms (${result.length} chars)`);
 
       onToolEvent?.({
         type: 'tool_result',
@@ -121,6 +134,7 @@ export async function chatWithTools(
   }
 
   // Stream the final response
+  console.log('[Chat] Streaming final response...');
   const stream = llm.chatStream(messages, {
     tools: searchTools,
     maxTokens: 4096,
@@ -137,6 +151,9 @@ export async function chatWithTools(
       await logLLMCall(sessionId, 'chat_response', chunk.model, chunk.usage, streamCost);
     }
   }
+
+  const elapsed = ((Date.now() - chatStart) / 1000).toFixed(1);
+  console.log(`[Chat] Done in ${elapsed}s | ${totalTokens} tokens, $${totalCost.toFixed(6)}`);
 
   return { totalCost, totalTokens };
 }

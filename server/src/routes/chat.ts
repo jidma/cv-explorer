@@ -105,6 +105,9 @@ router.post('/', async (req, res) => {
         title,
       }).returning({ id: chatSessions.id });
       sessionId = session.id;
+      console.log(`[Chat] New session ${sessionId}: "${title}"`);
+    } else {
+      console.log(`[Chat] Continuing session ${sessionId}`);
     }
 
     // Save user message to DB
@@ -114,9 +117,10 @@ router.post('/', async (req, res) => {
         role: 'user',
         content: lastUserMessage.content,
       });
+      console.log(`[Chat] Saved user message (${lastUserMessage.content.length} chars)`);
     }
   } catch (err) {
-    console.error('Error creating session/saving message:', err);
+    console.error('[Chat] Error creating session/saving message:', err);
   }
 
   // Set up SSE
@@ -174,14 +178,16 @@ router.post('/', async (req, res) => {
           updatedAt: new Date(),
         })
         .where(eq(chatSessions.id, sessionId));
+
+      console.log(`[Chat] Response saved (${assistantContent.length} chars, ${toolCallsData.length} tool calls, ${cost.totalTokens} tokens, $${cost.totalCost.toFixed(6)})`);
     } catch (err) {
-      console.error('Error saving assistant message:', err);
+      console.error('[Chat] Error saving assistant message:', err);
     }
 
     res.write(`data: ${JSON.stringify({ type: 'done', cost: { ...cost, sessionId } })}\n\n`);
     res.end();
   } catch (err) {
-    console.error('Chat error:', err);
+    console.error('[Chat] Error:', err);
     res.write(`data: ${JSON.stringify({ type: 'error', message: 'An error occurred' })}\n\n`);
     res.end();
   }

@@ -57,6 +57,11 @@ export async function processResume(filePath: string, originalFilename: string):
   console.log(`[Pipeline] Extracted in ${Date.now() - stepStart}ms (${extraction.usage.model}, ${extraction.usage.usage.totalTokens} tokens, $${extraction.usage.cost.toFixed(6)})`);
   console.log(`[Pipeline]   → ${extraction.data.full_name} | ${extraction.data.experiences?.length ?? 0} exp, ${extraction.data.skills?.length ?? 0} skills`);
 
+  // Validate: must have at least a name
+  if (!extraction.data.full_name?.trim()) {
+    throw new Error('Could not extract a candidate name — file may not be a resume');
+  }
+
   // Step 3: Enrich
   console.log('[Pipeline] Step 3/5: Enriching & normalizing via LLM...');
   stepStart = Date.now();
