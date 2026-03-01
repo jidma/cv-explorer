@@ -15,7 +15,7 @@ export async function searchBySkills(skillNames: string[], minYearsExperience?: 
   const params: (string | number)[] = skillNames.map(s => s.toLowerCase());
 
   let query = `
-    SELECT DISTINCT c.id, c.full_name, c.email, c.location, c.summary,
+    SELECT c.id, c.full_name, c.email, c.location, c.summary,
            array_agg(DISTINCT s.name) AS matched_skills
     FROM candidates c
     JOIN skills s ON s.candidate_id = c.id

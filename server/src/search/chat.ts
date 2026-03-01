@@ -18,25 +18,30 @@ Guidelines:
 - When comparing candidates, be objective and reference specific data`;
 
 async function executeToolCall(toolCall: ToolCall): Promise<string> {
-  const args = JSON.parse(toolCall.arguments);
+  try {
+    const args = JSON.parse(toolCall.arguments);
 
-  switch (toolCall.name) {
-    case 'search_by_skills':
-      return JSON.stringify(await searchBySkills(args.skills, args.min_years_experience));
-    case 'search_by_experience':
-      return JSON.stringify(await searchByExperience(args.job_title, args.min_years, args.company));
-    case 'search_by_education':
-      return JSON.stringify(await searchByEducation(args.degree, args.field, args.institution));
-    case 'search_by_location':
-      return JSON.stringify(await searchByLocation(args.location));
-    case 'semantic_search':
-      return JSON.stringify(await semanticSearch(args.query, args.limit));
-    case 'get_candidate_detail':
-      return JSON.stringify(await getCandidateDetail(args.candidate_id));
-    case 'list_all_candidates':
-      return JSON.stringify(await listAllCandidates(args.page, args.limit));
-    default:
-      return JSON.stringify({ error: `Unknown tool: ${toolCall.name}` });
+    switch (toolCall.name) {
+      case 'search_by_skills':
+        return JSON.stringify(await searchBySkills(args.skills, args.min_years_experience));
+      case 'search_by_experience':
+        return JSON.stringify(await searchByExperience(args.job_title, args.min_years, args.company));
+      case 'search_by_education':
+        return JSON.stringify(await searchByEducation(args.degree, args.field, args.institution));
+      case 'search_by_location':
+        return JSON.stringify(await searchByLocation(args.location));
+      case 'semantic_search':
+        return JSON.stringify(await semanticSearch(args.query, args.limit));
+      case 'get_candidate_detail':
+        return JSON.stringify(await getCandidateDetail(args.candidate_id));
+      case 'list_all_candidates':
+        return JSON.stringify(await listAllCandidates(args.page, args.limit));
+      default:
+        return JSON.stringify({ error: `Unknown tool: ${toolCall.name}` });
+    }
+  } catch (err) {
+    console.error(`[Chat] Tool ${toolCall.name} failed:`, err);
+    return JSON.stringify({ error: `Tool execution failed: ${err instanceof Error ? err.message : 'unknown error'}` });
   }
 }
 

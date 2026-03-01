@@ -70,7 +70,7 @@ export async function extractCV(rawText: string): Promise<{ data: ExtractedCV; u
 
   const response = await llm.chat(messages, {
     temperature: 0,
-    maxTokens: 8192,
+    maxTokens: 16384,
     responseFormat: 'json',
   });
 

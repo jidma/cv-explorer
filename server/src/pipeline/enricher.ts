@@ -23,7 +23,7 @@ export async function enrichCV(extracted: ExtractedCV): Promise<{ data: Extracte
 
   const response = await llm.chat(messages, {
     temperature: 0,
-    maxTokens: 8192,
+    maxTokens: 16384,
     responseFormat: 'json',
   });
 
