@@ -25,7 +25,10 @@
           <h3 class="font-semibold text-gray-900">{{ candidate.full_name }}</h3>
           <p v-if="candidate.location" class="text-sm text-gray-500 mt-1">{{ candidate.location }}</p>
           <p v-if="candidate.summary" class="text-sm text-gray-600 mt-2 line-clamp-3">{{ candidate.summary }}</p>
-          <p class="text-xs text-gray-400 mt-3">Added {{ formatDate(candidate.created_at) }}</p>
+          <div class="flex justify-between items-center mt-3">
+            <p class="text-xs text-gray-400">Added {{ formatDate(candidate.created_at) }}</p>
+            <p v-if="candidate.ingestion_cost" class="text-xs text-gray-400">{{ formatCost(candidate.ingestion_cost) }}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -46,6 +49,11 @@
         </div>
 
         <p v-if="selected.summary" class="text-gray-700 mb-4">{{ selected.summary }}</p>
+
+        <div v-if="selected.ingestion_cost" class="mb-4 flex gap-4 text-sm text-gray-500 bg-gray-50 rounded-lg px-4 py-2">
+          <span>Ingestion cost: {{ formatCost(selected.ingestion_cost) }}</span>
+          <span v-if="selected.ingestion_tokens">Tokens: {{ selected.ingestion_tokens.toLocaleString() }}</span>
+        </div>
 
         <!-- Document actions -->
         <div v-if="selected.document_mime_type" class="flex gap-2 mb-6">
@@ -170,6 +178,12 @@ async function selectCandidate(id: string) {
   } catch (err) {
     console.error('Failed to load candidate:', err);
   }
+}
+
+function formatCost(cost: number | string): string {
+  const n = typeof cost === 'string' ? parseFloat(cost) : cost;
+  if (n < 0.01) return `$${n.toFixed(6)}`;
+  return `$${n.toFixed(4)}`;
 }
 
 function formatDate(dateStr: string): string {

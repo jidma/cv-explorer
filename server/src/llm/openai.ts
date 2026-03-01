@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { LLMProvider, Message, ChatOptions, ChatResponse, StreamChunk, ToolDefinition } from './types';
+import type { LLMProvider, Message, ChatOptions, ChatResponse, StreamChunk, ToolDefinition, EmbedResponse } from './types';
 
 export class OpenAIProvider implements LLMProvider {
   private client: OpenAI;
@@ -28,6 +28,7 @@ export class OpenAIProvider implements LLMProvider {
 
     const response = await this.client.chat.completions.create(params);
     const choice = response.choices[0];
+    const model = response.model || options.model || this.defaultModel;
 
     return {
       content: choice.message.content || '',
@@ -37,6 +38,12 @@ export class OpenAIProvider implements LLMProvider {
         arguments: tc.function.arguments,
       })),
       finishReason: choice.finish_reason === 'tool_calls' ? 'tool_calls' : choice.finish_reason === 'length' ? 'length' : 'stop',
+      usage: {
+        promptTokens: response.usage?.prompt_tokens ?? 0,
+        completionTokens: response.usage?.completion_tokens ?? 0,
+        totalTokens: response.usage?.total_tokens ?? 0,
+      },
+      model,
     };
   }
 
@@ -47,6 +54,7 @@ export class OpenAIProvider implements LLMProvider {
       temperature: options.temperature ?? 0.1,
       max_tokens: options.maxTokens ?? 4096,
       stream: true,
+      stream_options: { include_usage: true },
     };
 
     if (options.tools?.length) {
@@ -54,16 +62,16 @@ export class OpenAIProvider implements LLMProvider {
     }
 
     const stream = await this.client.chat.completions.create(params);
+    const model = options.model || this.defaultModel;
 
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta;
-      if (!delta) continue;
 
-      if (delta.content) {
+      if (delta?.content) {
         yield { type: 'text', text: delta.content };
       }
 
-      if (delta.tool_calls) {
+      if (delta?.tool_calls) {
         for (const tc of delta.tool_calls) {
           if (tc.function?.name) {
             yield {
@@ -81,17 +89,30 @@ export class OpenAIProvider implements LLMProvider {
       }
 
       if (chunk.choices[0]?.finish_reason) {
-        yield { type: 'done' };
+        const usage = chunk.usage ? {
+          promptTokens: chunk.usage.prompt_tokens,
+          completionTokens: chunk.usage.completion_tokens,
+          totalTokens: chunk.usage.total_tokens,
+        } : undefined;
+        yield { type: 'done', usage, model };
       }
     }
   }
 
-  async embed(text: string): Promise<number[]> {
+  async embed(text: string): Promise<EmbedResponse> {
     const response = await this.client.embeddings.create({
       model: this.embeddingModel,
       input: text,
     });
-    return response.data[0].embedding;
+    return {
+      embedding: response.data[0].embedding,
+      usage: {
+        promptTokens: response.usage.prompt_tokens,
+        completionTokens: 0,
+        totalTokens: response.usage.total_tokens,
+      },
+      model: this.embeddingModel,
+    };
   }
 
   private toOpenAIMessages(messages: Message[]): OpenAI.ChatCompletionMessageParam[] {

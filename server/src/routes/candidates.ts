@@ -1,5 +1,7 @@
 import { Router } from 'express';
-import { pool } from '../db/connection';
+import { eq } from 'drizzle-orm';
+import { db } from '../db/client';
+import { candidates } from '../db/schema';
 import { listAllCandidates, getCandidateDetail } from '../search/structured';
 
 const router = Router();
@@ -31,19 +33,22 @@ router.get('/:id', async (req, res) => {
 
 router.get('/:id/document', async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      'SELECT original_document, document_mime_type, original_filename FROM candidates WHERE id = $1',
-      [req.params.id]
-    );
+    const [row] = await db
+      .select({
+        originalDocument: candidates.originalDocument,
+        documentMimeType: candidates.documentMimeType,
+        originalFilename: candidates.originalFilename,
+      })
+      .from(candidates)
+      .where(eq(candidates.id, req.params.id));
 
-    if (!rows.length || !rows[0].original_document) {
+    if (!row || !row.originalDocument) {
       return res.status(404).json({ error: 'Document not found' });
     }
 
-    const { original_document, document_mime_type, original_filename } = rows[0];
-    res.setHeader('Content-Type', document_mime_type);
-    res.setHeader('Content-Disposition', `inline; filename="${original_filename}"`);
-    res.send(original_document);
+    res.setHeader('Content-Type', row.documentMimeType!);
+    res.setHeader('Content-Disposition', `inline; filename="${row.originalFilename}"`);
+    res.send(row.originalDocument);
   } catch (err) {
     console.error('Error fetching document:', err);
     res.status(500).json({ error: 'Failed to fetch document' });

@@ -1,5 +1,5 @@
-import { getLLMProvider } from '../llm';
-import type { Message } from '../llm/types';
+import { getLLMProvider, calculateCost } from '../llm';
+import type { Message, LLMUsageRecord } from '../llm/types';
 import type { ExtractedCV } from 'cv-explorer-shared';
 
 const ENRICHMENT_PROMPT = `You are a data normalization expert for HR/recruitment data.
@@ -13,7 +13,7 @@ Given a structured CV in JSON format, normalize and enrich it:
 
 Return the same JSON structure with the enriched data. Return ONLY valid JSON.`;
 
-export async function enrichCV(extracted: ExtractedCV): Promise<ExtractedCV> {
+export async function enrichCV(extracted: ExtractedCV): Promise<{ data: ExtractedCV; usage: LLMUsageRecord }> {
   const llm = getLLMProvider();
 
   const messages: Message[] = [
@@ -27,6 +27,14 @@ export async function enrichCV(extracted: ExtractedCV): Promise<ExtractedCV> {
     responseFormat: 'json',
   });
 
-  const enriched = JSON.parse(response.content);
-  return enriched as ExtractedCV;
+  const enriched = JSON.parse(response.content) as ExtractedCV;
+  return {
+    data: enriched,
+    usage: {
+      model: response.model,
+      usage: response.usage,
+      cost: calculateCost(response.usage, response.model),
+      operation: 'enrichment',
+    },
+  };
 }

@@ -1,7 +1,11 @@
+import { eq, ilike, desc, asc, count } from 'drizzle-orm';
+import { db } from '../db/client';
 import { pool } from '../db/connection';
+import { candidates, experiences, education, skills, languages, certifications } from '../db/schema';
 
-export async function searchBySkills(skills: string[], minYearsExperience?: number) {
-  const skillPlaceholders = skills.map((_, i) => `$${i + 1}`).join(', ');
+export async function searchBySkills(skillNames: string[], minYearsExperience?: number) {
+  const skillPlaceholders = skillNames.map((_, i) => `$${i + 1}`).join(', ');
+  const params: (string | number)[] = skillNames.map(s => s.toLowerCase());
 
   let query = `
     SELECT DISTINCT c.id, c.full_name, c.email, c.location, c.summary,
@@ -10,7 +14,6 @@ export async function searchBySkills(skills: string[], minYearsExperience?: numb
     JOIN skills s ON s.candidate_id = c.id
     WHERE LOWER(s.name) IN (${skillPlaceholders})
   `;
-  const params: (string | number)[] = skills.map(s => s.toLowerCase());
 
   if (minYearsExperience) {
     query += `
@@ -114,53 +117,79 @@ export async function searchByEducation(degree?: string, field?: string, institu
 }
 
 export async function searchByLocation(location: string) {
-  const { rows } = await pool.query(
-    `SELECT id, full_name, email, location, summary
-     FROM candidates
-     WHERE LOWER(location) LIKE $1
-     LIMIT 20`,
-    [`%${location.toLowerCase()}%`]
-  );
+  const rows = await db
+    .select({
+      id: candidates.id,
+      full_name: candidates.fullName,
+      email: candidates.email,
+      location: candidates.location,
+      summary: candidates.summary,
+    })
+    .from(candidates)
+    .where(ilike(candidates.location, `%${location}%`))
+    .limit(20);
+
   return rows;
 }
 
 export async function getCandidateDetail(candidateId: string) {
-  const { rows: [candidate] } = await pool.query(
-    'SELECT id, full_name, email, phone, location, summary, original_filename, document_mime_type, created_at FROM candidates WHERE id = $1',
-    [candidateId]
-  );
+  const [candidate] = await db
+    .select({
+      id: candidates.id,
+      full_name: candidates.fullName,
+      email: candidates.email,
+      phone: candidates.phone,
+      location: candidates.location,
+      summary: candidates.summary,
+      original_filename: candidates.originalFilename,
+      document_mime_type: candidates.documentMimeType,
+      ingestion_cost: candidates.ingestionCost,
+      ingestion_tokens: candidates.ingestionTokens,
+      created_at: candidates.createdAt,
+    })
+    .from(candidates)
+    .where(eq(candidates.id, candidateId));
 
   if (!candidate) return null;
 
-  const [experiences, education, skills, languages, certifications] = await Promise.all([
-    pool.query('SELECT * FROM experiences WHERE candidate_id = $1 ORDER BY start_date DESC', [candidateId]),
-    pool.query('SELECT * FROM education WHERE candidate_id = $1 ORDER BY start_date DESC', [candidateId]),
-    pool.query('SELECT * FROM skills WHERE candidate_id = $1 ORDER BY category, name', [candidateId]),
-    pool.query('SELECT * FROM languages WHERE candidate_id = $1', [candidateId]),
-    pool.query('SELECT * FROM certifications WHERE candidate_id = $1', [candidateId]),
+  const [expRows, eduRows, skillRows, langRows, certRows] = await Promise.all([
+    db.select().from(experiences).where(eq(experiences.candidateId, candidateId)).orderBy(desc(experiences.startDate)),
+    db.select().from(education).where(eq(education.candidateId, candidateId)).orderBy(desc(education.startDate)),
+    db.select().from(skills).where(eq(skills.candidateId, candidateId)).orderBy(asc(skills.category), asc(skills.name)),
+    db.select().from(languages).where(eq(languages.candidateId, candidateId)),
+    db.select().from(certifications).where(eq(certifications.candidateId, candidateId)),
   ]);
 
   return {
     ...candidate,
-    experiences: experiences.rows,
-    education: education.rows,
-    skills: skills.rows,
-    languages: languages.rows,
-    certifications: certifications.rows,
+    experiences: expRows,
+    education: eduRows,
+    skills: skillRows,
+    languages: langRows,
+    certifications: certRows,
   };
 }
 
 export async function listAllCandidates(page: number = 1, limit: number = 20) {
   const offset = (page - 1) * limit;
-  const { rows } = await pool.query(
-    `SELECT id, full_name, email, location, summary, created_at
-     FROM candidates
-     ORDER BY created_at DESC
-     LIMIT $1 OFFSET $2`,
-    [limit, offset]
-  );
 
-  const { rows: [{ count }] } = await pool.query('SELECT COUNT(*) FROM candidates');
+  const rows = await db
+    .select({
+      id: candidates.id,
+      full_name: candidates.fullName,
+      email: candidates.email,
+      location: candidates.location,
+      summary: candidates.summary,
+      ingestion_cost: candidates.ingestionCost,
+      ingestion_tokens: candidates.ingestionTokens,
+      created_at: candidates.createdAt,
+    })
+    .from(candidates)
+    .orderBy(desc(candidates.createdAt))
+    .limit(limit)
+    .offset(offset);
 
-  return { candidates: rows, total: parseInt(count, 10), page, limit };
+  const [{ total }] = await db.select({ total: count() }).from(candidates);
+
+  return { candidates: rows, total, page, limit };
 }

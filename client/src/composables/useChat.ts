@@ -1,13 +1,15 @@
 import { ref } from 'vue';
-import type { ChatMessage } from '../types';
+import type { ChatMessage, ChatCost } from '../types';
 
 export function useChat() {
   const messages = ref<ChatMessage[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
+  const lastCost = ref<ChatCost | null>(null);
 
   async function sendMessage(content: string) {
     error.value = null;
+    lastCost.value = null;
     messages.value.push({ role: 'user', content });
     messages.value.push({ role: 'assistant', content: '' });
 
@@ -50,6 +52,10 @@ export function useChat() {
 
           if (data.type === 'text') {
             messages.value[assistantIdx].content += data.text;
+          } else if (data.type === 'done' && data.cost) {
+            const cost: ChatCost = data.cost;
+            messages.value[assistantIdx].cost = cost;
+            lastCost.value = cost;
           } else if (data.type === 'error') {
             error.value = data.message;
           }
@@ -57,7 +63,7 @@ export function useChat() {
       }
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to send message';
-      messages.value.pop(); // Remove empty assistant message
+      messages.value.pop();
     } finally {
       loading.value = false;
     }
@@ -65,7 +71,8 @@ export function useChat() {
 
   function clearMessages() {
     messages.value = [];
+    lastCost.value = null;
   }
 
-  return { messages, loading, error, sendMessage, clearMessages };
+  return { messages, loading, error, lastCost, sendMessage, clearMessages };
 }

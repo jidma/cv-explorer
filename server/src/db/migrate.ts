@@ -1,50 +1,21 @@
-import fs from 'fs';
 import path from 'path';
+import { existsSync } from 'fs';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { db } from './client';
 import { pool } from './connection';
 
-async function migrate() {
-  const client = await pool.connect();
-  try {
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS migrations (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL UNIQUE,
-        applied_at TIMESTAMPTZ DEFAULT NOW()
-      )
-    `);
-
-    const migrationsDir = path.join(__dirname, 'migrations');
-    const files = fs.readdirSync(migrationsDir).filter(f => f.endsWith('.sql')).sort();
-
-    for (const file of files) {
-      const { rows } = await client.query('SELECT id FROM migrations WHERE name = $1', [file]);
-      if (rows.length > 0) {
-        console.log(`Skipping ${file} (already applied)`);
-        continue;
-      }
-
-      const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf-8');
-      console.log(`Applying ${file}...`);
-      await client.query('BEGIN');
-      try {
-        await client.query(sql);
-        await client.query('INSERT INTO migrations (name) VALUES ($1)', [file]);
-        await client.query('COMMIT');
-        console.log(`Applied ${file}`);
-      } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-      }
-    }
-
-    console.log('All migrations applied.');
-  } finally {
-    client.release();
-    await pool.end();
-  }
+function resolveMigrationsDir(): string {
+  const fromCwd = path.resolve(process.cwd(), 'src/db/migrations');
+  const fromServer = path.resolve(process.cwd(), 'server/src/db/migrations');
+  return [fromCwd, fromServer].find((dir) => existsSync(dir)) ?? fromCwd;
 }
 
-migrate().catch((err) => {
-  console.error('Migration failed:', err);
-  process.exit(1);
-});
+async function ensureExtensions(): Promise<void> {
+  await pool.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"');
+  await pool.query('CREATE EXTENSION IF NOT EXISTS "vector"');
+}
+
+export async function runMigrations(): Promise<void> {
+  await ensureExtensions();
+  await migrate(db, { migrationsFolder: resolveMigrationsDir() });
+}

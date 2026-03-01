@@ -1,5 +1,5 @@
-import { getLLMProvider } from '../llm';
-import type { Message } from '../llm/types';
+import { getLLMProvider, calculateCost } from '../llm';
+import type { Message, LLMUsageRecord } from '../llm/types';
 import type { ExtractedCV } from 'cv-explorer-shared';
 
 const EXTRACTION_PROMPT = `You are a CV/resume data extraction expert. Extract all structured information from the following resume text.
@@ -60,7 +60,7 @@ Rules:
 - Extract ALL experiences, education entries, skills, languages, and certifications found.
 - Return ONLY valid JSON, no markdown or extra text.`;
 
-export async function extractCV(rawText: string): Promise<ExtractedCV> {
+export async function extractCV(rawText: string): Promise<{ data: ExtractedCV; usage: LLMUsageRecord }> {
   const llm = getLLMProvider();
 
   const messages: Message[] = [
@@ -74,6 +74,14 @@ export async function extractCV(rawText: string): Promise<ExtractedCV> {
     responseFormat: 'json',
   });
 
-  const parsed = JSON.parse(response.content);
-  return parsed as ExtractedCV;
+  const parsed = JSON.parse(response.content) as ExtractedCV;
+  return {
+    data: parsed,
+    usage: {
+      model: response.model,
+      usage: response.usage,
+      cost: calculateCost(response.usage, response.model),
+      operation: 'extraction',
+    },
+  };
 }

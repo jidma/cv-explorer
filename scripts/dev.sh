@@ -15,9 +15,10 @@ echo "==> PostgreSQL is ready."
 echo "==> Running migrations..."
 npm run db:migrate
 
-echo "==> Starting dev servers..."
+echo "==> Starting dev servers + Drizzle Studio..."
 npx concurrently \
-  --names "server,client" \
-  --prefix-colors "blue,green" \
+  --names "server,client,studio" \
+  --prefix-colors "blue,green,magenta" \
   "npm run dev --workspace=server" \
-  "npm run dev --workspace=client"
+  "npm run dev --workspace=client" \
+  "npm run db:studio --workspace=server"

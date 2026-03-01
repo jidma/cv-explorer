@@ -35,6 +35,9 @@
             <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
             <div class="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
           </div>
+          <div v-if="msg.cost" class="mt-1 text-xs opacity-60">
+            {{ formatCost(msg.cost.totalCost) }} &middot; {{ msg.cost.totalTokens.toLocaleString() }} tokens
+          </div>
         </div>
       </div>
     </div>
@@ -66,7 +69,7 @@
 import { ref, nextTick, watch } from 'vue';
 import { useChat } from '../composables/useChat';
 
-const { messages, loading, error, sendMessage } = useChat();
+const { messages, loading, error, sendMessage, lastCost } = useChat();
 const input = ref('');
 const messagesContainer = ref<HTMLElement>();
 
@@ -76,6 +79,11 @@ const examples = [
   'Find developers with more than 5 years of experience',
   'List all candidates',
 ];
+
+function formatCost(cost: number): string {
+  if (cost < 0.01) return `$${cost.toFixed(6)}`;
+  return `$${cost.toFixed(4)}`;
+}
 
 async function send() {
   const text = input.value.trim();

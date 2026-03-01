@@ -36,9 +36,24 @@
 
     <div v-if="result" class="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
       <p class="text-green-700 font-medium">{{ result.message }}</p>
+
+      <div v-if="result.cost" class="mt-3 text-sm text-gray-600">
+        <p class="font-medium text-gray-700 mb-1">Processing cost</p>
+        <div class="flex gap-4">
+          <span>Total: {{ formatCost(result.cost.total) }}</span>
+          <span>Tokens: {{ result.cost.tokens.toLocaleString() }}</span>
+        </div>
+        <div v-if="result.cost.breakdown?.length" class="mt-2 space-y-1">
+          <div v-for="(step, i) in result.cost.breakdown" :key="i" class="flex justify-between text-xs text-gray-500 bg-white rounded px-2 py-1">
+            <span>{{ step.operation }} <span class="text-gray-400">({{ step.model }})</span></span>
+            <span>{{ formatCost(step.cost) }} &middot; {{ step.tokens.toLocaleString() }} tokens</span>
+          </div>
+        </div>
+      </div>
+
       <router-link
         :to="`/candidates`"
-        class="mt-2 inline-block text-indigo-600 hover:text-indigo-800 text-sm"
+        class="mt-3 inline-block text-indigo-600 hover:text-indigo-800 text-sm"
       >
         View all candidates &rarr;
       </router-link>
@@ -52,6 +67,11 @@ import { useUpload } from '../composables/useUpload';
 
 const { uploading, error, result, uploadFile } = useUpload();
 const dragOver = ref(false);
+
+function formatCost(cost: number): string {
+  if (cost < 0.01) return `$${cost.toFixed(6)}`;
+  return `$${cost.toFixed(4)}`;
+}
 
 function handleDrop(e: DragEvent) {
   dragOver.value = false;

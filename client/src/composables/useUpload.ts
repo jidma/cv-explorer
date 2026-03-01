@@ -1,9 +1,10 @@
 import { ref } from 'vue';
+import type { UploadResult } from '../types';
 
 export function useUpload() {
   const uploading = ref(false);
   const error = ref<string | null>(null);
-  const result = ref<{ candidateId: string; message: string } | null>(null);
+  const result = ref<UploadResult | null>(null);
 
   async function uploadFile(file: File) {
     uploading.value = true;
@@ -25,7 +26,11 @@ export function useUpload() {
       }
 
       const data = await response.json();
-      result.value = { candidateId: data.candidateId, message: data.message };
+      result.value = {
+        candidateId: data.candidateId,
+        message: data.message,
+        cost: data.cost,
+      };
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Upload failed';
     } finally {

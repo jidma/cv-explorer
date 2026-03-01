@@ -1,6 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { pool } from '../db/connection';
+import { sql } from 'drizzle-orm';
+import { db } from '../db/client';
+import { experiences, education, skills, languages, certifications, llmCalls } from '../db/schema';
+import { calculateCost } from '../llm';
+import type { LLMUsageRecord } from '../llm/types';
 import { parseResume } from './parser';
 import { extractCV } from './extractor';
 import { enrichCV } from './enricher';
@@ -12,8 +16,16 @@ const MIME_TYPES: Record<string, string> = {
   '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
 };
 
-export async function processResume(filePath: string, originalFilename: string): Promise<string> {
+export interface PipelineResult {
+  candidateId: string;
+  totalCost: number;
+  totalTokens: number;
+  calls: LLMUsageRecord[];
+}
+
+export async function processResume(filePath: string, originalFilename: string): Promise<PipelineResult> {
   console.log(`[Pipeline] Starting processing: ${originalFilename}`);
+  const calls: LLMUsageRecord[] = [];
 
   // Read original file bytes for storage
   const fileBuffer = fs.readFileSync(filePath);
@@ -26,22 +38,41 @@ export async function processResume(filePath: string, originalFilename: string):
 
   // Step 2: Extract
   console.log('[Pipeline] Extracting...');
-  const extracted = await extractCV(rawText);
+  const extraction = await extractCV(rawText);
+  calls.push(extraction.usage);
 
   // Step 3: Enrich
   console.log('[Pipeline] Enriching...');
-  const enriched = await enrichCV(extracted);
+  const enrichment = await enrichCV(extraction.data);
+  calls.push(enrichment.usage);
 
   // Step 4: Embed
   console.log('[Pipeline] Generating embedding...');
-  const embedding = await generateEmbedding(enriched, rawText);
+  const embedResult = await generateEmbedding(enrichment.data, rawText);
+  const embedUsage: LLMUsageRecord = {
+    model: embedResult.model,
+    usage: embedResult.usage,
+    cost: calculateCost(embedResult.usage, embedResult.model),
+    operation: 'embedding',
+  };
+  calls.push(embedUsage);
+
+  // Totals
+  const totalCost = calls.reduce((sum, c) => sum + c.cost, 0);
+  const totalTokens = calls.reduce((sum, c) => sum + c.usage.totalTokens, 0);
+
+  console.log(`[Pipeline] Cost: $${totalCost.toFixed(6)} | Tokens: ${totalTokens}`);
 
   // Step 5: Store
   console.log('[Pipeline] Storing...');
-  const candidateId = await storeCandidate(enriched, rawText, originalFilename, embedding, fileBuffer, mimeType);
+  const candidateId = await storeCandidate(
+    enrichment.data, rawText, originalFilename,
+    embedResult.embedding, fileBuffer, mimeType,
+    totalCost, totalTokens, calls
+  );
 
   console.log(`[Pipeline] Done. Candidate ID: ${candidateId}`);
-  return candidateId;
+  return { candidateId, totalCost, totalTokens, calls };
 }
 
 async function storeCandidate(
@@ -50,73 +81,91 @@ async function storeCandidate(
   originalFilename: string,
   embedding: number[],
   documentBuffer: Buffer,
-  documentMimeType: string
+  documentMimeType: string,
+  totalCost: number,
+  totalTokens: number,
+  calls: LLMUsageRecord[]
 ): Promise<string> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  const embeddingStr = `[${embedding.join(',')}]`;
 
-    // Insert candidate
-    const embeddingStr = `[${embedding.join(',')}]`;
-    const { rows } = await client.query(
-      `INSERT INTO candidates (full_name, email, phone, location, summary, raw_text, original_filename, embedding, original_document, document_mime_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::vector, $9, $10)
-       RETURNING id`,
-      [cv.full_name, cv.email, cv.phone, cv.location, cv.summary, rawText, originalFilename, embeddingStr, documentBuffer, documentMimeType]
-    );
-    const candidateId = rows[0].id;
+  return await db.transaction(async (tx) => {
+    // Insert candidate — use raw sql for the vector cast
+    const result = await tx.execute(sql`
+      INSERT INTO candidates (full_name, email, phone, location, summary, raw_text, original_filename, embedding, original_document, document_mime_type, ingestion_cost, ingestion_tokens)
+      VALUES (${cv.full_name}, ${cv.email}, ${cv.phone}, ${cv.location}, ${cv.summary}, ${rawText}, ${originalFilename}, ${embeddingStr}::vector, ${documentBuffer}, ${documentMimeType}, ${totalCost}, ${totalTokens})
+      RETURNING id
+    `);
+    const candidateId = (result.rows[0] as { id: string }).id;
+
+    // Log LLM calls
+    for (const call of calls) {
+      await tx.insert(llmCalls).values({
+        candidateId,
+        operation: call.operation,
+        model: call.model,
+        promptTokens: call.usage.promptTokens,
+        completionTokens: call.usage.completionTokens,
+        totalTokens: call.usage.totalTokens,
+        cost: call.cost.toFixed(6),
+      });
+    }
 
     // Insert experiences
     for (const exp of cv.experiences) {
-      await client.query(
-        `INSERT INTO experiences (candidate_id, company, title, start_date, end_date, is_current, description, location)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [candidateId, exp.company, exp.title, exp.start_date, exp.end_date, exp.is_current, exp.description, exp.location]
-      );
+      await tx.insert(experiences).values({
+        candidateId,
+        company: exp.company,
+        title: exp.title,
+        startDate: exp.start_date,
+        endDate: exp.end_date,
+        isCurrent: exp.is_current,
+        description: exp.description,
+        location: exp.location,
+      });
     }
 
     // Insert education
     for (const edu of cv.education) {
-      await client.query(
-        `INSERT INTO education (candidate_id, institution, degree, field_of_study, start_date, end_date, description)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [candidateId, edu.institution, edu.degree, edu.field_of_study, edu.start_date, edu.end_date, edu.description]
-      );
+      await tx.insert(education).values({
+        candidateId,
+        institution: edu.institution,
+        degree: edu.degree,
+        fieldOfStudy: edu.field_of_study,
+        startDate: edu.start_date,
+        endDate: edu.end_date,
+        description: edu.description,
+      });
     }
 
     // Insert skills
     for (const skill of cv.skills) {
-      await client.query(
-        `INSERT INTO skills (candidate_id, name, category, proficiency)
-         VALUES ($1, $2, $3, $4)`,
-        [candidateId, skill.name, skill.category, skill.proficiency]
-      );
+      await tx.insert(skills).values({
+        candidateId,
+        name: skill.name,
+        category: skill.category,
+        proficiency: skill.proficiency,
+      });
     }
 
     // Insert languages
     for (const lang of cv.languages) {
-      await client.query(
-        `INSERT INTO languages (candidate_id, name, proficiency)
-         VALUES ($1, $2, $3)`,
-        [candidateId, lang.name, lang.proficiency]
-      );
+      await tx.insert(languages).values({
+        candidateId,
+        name: lang.name,
+        proficiency: lang.proficiency,
+      });
     }
 
     // Insert certifications
     for (const cert of cv.certifications) {
-      await client.query(
-        `INSERT INTO certifications (candidate_id, name, issuer, issue_date)
-         VALUES ($1, $2, $3, $4)`,
-        [candidateId, cert.name, cert.issuer, cert.issue_date]
-      );
+      await tx.insert(certifications).values({
+        candidateId,
+        name: cert.name,
+        issuer: cert.issuer,
+        issueDate: cert.issue_date,
+      });
     }
 
-    await client.query('COMMIT');
     return candidateId;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  });
 }

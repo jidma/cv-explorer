@@ -44,13 +44,22 @@ router.post('/', upload.single('resume'), async (req, res) => {
     const filePath = req.file.path;
     const originalFilename = req.file.originalname;
 
-    // Start processing in background
-    const candidateId = await processResume(filePath, originalFilename);
+    const result = await processResume(filePath, originalFilename);
 
     res.json({
-      candidateId,
+      candidateId: result.candidateId,
       status: 'completed',
       message: `Resume processed successfully: ${originalFilename}`,
+      cost: {
+        total: result.totalCost,
+        tokens: result.totalTokens,
+        breakdown: result.calls.map(c => ({
+          operation: c.operation,
+          model: c.model,
+          tokens: c.usage.totalTokens,
+          cost: c.cost,
+        })),
+      },
     });
   } catch (err) {
     console.error('Upload processing error:', err);

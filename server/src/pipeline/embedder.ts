@@ -1,7 +1,8 @@
 import { getEmbeddingProvider } from '../llm';
+import type { EmbedResponse } from '../llm/types';
 import type { ExtractedCV } from 'cv-explorer-shared';
 
-export async function generateEmbedding(cv: ExtractedCV, rawText: string): Promise<number[]> {
+export async function generateEmbedding(cv: ExtractedCV, rawText: string): Promise<EmbedResponse> {
   // Build a searchable text from key fields
   const parts: string[] = [];
 

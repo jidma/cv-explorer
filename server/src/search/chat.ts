@@ -1,5 +1,8 @@
-import { getLLMProvider } from '../llm';
-import type { Message, ToolCall } from '../llm/types';
+import { v4 as uuidv4 } from 'uuid';
+import { getLLMProvider, calculateCost } from '../llm';
+import type { Message, ToolCall, TokenUsage } from '../llm/types';
+import { db } from '../db/client';
+import { llmCalls } from '../db/schema';
 import { searchTools } from './tools';
 import { searchBySkills, searchByExperience, searchByEducation, searchByLocation, getCandidateDetail, listAllCandidates } from './structured';
 import { semanticSearch } from './semantic';
@@ -38,11 +41,19 @@ async function executeToolCall(toolCall: ToolCall): Promise<string> {
   }
 }
 
+export interface ChatCost {
+  totalCost: number;
+  totalTokens: number;
+}
+
 export async function chatWithTools(
   userMessages: Array<{ role: 'user' | 'assistant'; content: string }>,
   onChunk: (text: string) => void
-): Promise<void> {
+): Promise<ChatCost> {
   const llm = getLLMProvider();
+  const sessionId = uuidv4();
+  let totalCost = 0;
+  let totalTokens = 0;
 
   const messages: Message[] = [
     { role: 'system', content: SYSTEM_PROMPT },
@@ -57,9 +68,14 @@ export async function chatWithTools(
       maxTokens: 4096,
     });
 
+    // Track cost for this call
+    const callCost = calculateCost(response.usage, response.model);
+    totalCost += callCost;
+    totalTokens += response.usage.totalTokens;
+
+    await logLLMCall(sessionId, 'chat_tool_use', response.model, response.usage, callCost);
+
     if (response.toolCalls.length === 0) {
-      // No tool calls — stream the final response
-      // Re-do as streaming call for final response
       break;
     }
 
@@ -91,5 +107,35 @@ export async function chatWithTools(
     if (chunk.type === 'text' && chunk.text) {
       onChunk(chunk.text);
     }
+    if (chunk.type === 'done' && chunk.usage && chunk.model) {
+      const streamCost = calculateCost(chunk.usage, chunk.model);
+      totalCost += streamCost;
+      totalTokens += chunk.usage.totalTokens;
+      await logLLMCall(sessionId, 'chat_response', chunk.model, chunk.usage, streamCost);
+    }
+  }
+
+  return { totalCost, totalTokens };
+}
+
+async function logLLMCall(
+  sessionId: string,
+  operation: string,
+  model: string,
+  usage: TokenUsage,
+  cost: number
+): Promise<void> {
+  try {
+    await db.insert(llmCalls).values({
+      chatSessionId: sessionId,
+      operation,
+      model,
+      promptTokens: usage.promptTokens,
+      completionTokens: usage.completionTokens,
+      totalTokens: usage.totalTokens,
+      cost: cost.toFixed(6),
+    });
+  } catch (err) {
+    console.error('Failed to log LLM call:', err);
   }
 }

@@ -31,4 +31,5 @@ export function getEmbeddingProvider(): LLMProvider {
   return _embeddingProvider;
 }
 
-export type { LLMProvider, Message, ChatOptions, ChatResponse, StreamChunk, ToolDefinition, ToolCall } from './types';
+export type { LLMProvider, Message, ChatOptions, ChatResponse, StreamChunk, ToolDefinition, ToolCall, TokenUsage, EmbedResponse, LLMUsageRecord } from './types';
+export { calculateCost } from './types';

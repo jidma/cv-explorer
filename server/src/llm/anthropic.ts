@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import type { LLMProvider, Message, ChatOptions, ChatResponse, StreamChunk, ToolDefinition } from './types';
+import type { LLMProvider, Message, ChatOptions, ChatResponse, StreamChunk, ToolDefinition, EmbedResponse } from './types';
 
 export class AnthropicProvider implements LLMProvider {
   private client: Anthropic;
@@ -45,6 +45,12 @@ export class AnthropicProvider implements LLMProvider {
       content: textContent,
       toolCalls,
       finishReason: response.stop_reason === 'tool_use' ? 'tool_calls' : response.stop_reason === 'max_tokens' ? 'length' : 'stop',
+      usage: {
+        promptTokens: response.usage.input_tokens,
+        completionTokens: response.usage.output_tokens,
+        totalTokens: response.usage.input_tokens + response.usage.output_tokens,
+      },
+      model: response.model,
     };
   }
 
@@ -85,15 +91,21 @@ export class AnthropicProvider implements LLMProvider {
             toolCall: { arguments: event.delta.partial_json },
           };
         }
-      } else if (event.type === 'message_stop') {
-        yield { type: 'done' };
+      } else if (event.type === 'message_delta') {
+        yield {
+          type: 'done',
+          usage: {
+            promptTokens: 0, // only available on message_start
+            completionTokens: event.usage.output_tokens,
+            totalTokens: event.usage.output_tokens,
+          },
+          model: options.model || this.defaultModel,
+        };
       }
     }
   }
 
-  async embed(text: string): Promise<number[]> {
-    // Anthropic doesn't have a native embedding API — use Voyage AI or fall back.
-    // For now, throw an error suggesting to use OpenAI for embeddings.
+  async embed(_text: string): Promise<EmbedResponse> {
     throw new Error(
       'Anthropic does not provide an embedding API. ' +
       'Set LLM_PROVIDER=openai for embeddings, or implement a Voyage AI adapter.'

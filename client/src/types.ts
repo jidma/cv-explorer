@@ -7,6 +7,8 @@ export interface Candidate {
   summary: string | null;
   original_filename: string | null;
   document_mime_type: string | null;
+  ingestion_cost: string | null;
+  ingestion_tokens: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -62,4 +64,27 @@ export interface CandidateDetail extends Candidate {
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  cost?: ChatCost;
+}
+
+export interface ChatCost {
+  totalCost: number;
+  totalTokens: number;
+}
+
+export interface UploadCost {
+  total: number;
+  tokens: number;
+  breakdown: Array<{
+    operation: string;
+    model: string;
+    tokens: number;
+    cost: number;
+  }>;
+}
+
+export interface UploadResult {
+  candidateId: string;
+  message: string;
+  cost?: UploadCost;
 }
