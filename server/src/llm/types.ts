@@ -76,6 +76,13 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   // Anthropic
   'claude-sonnet-4-20250514': { input: 3.00, output: 15.00 },
   'claude-haiku-4-5-20251001': { input: 0.80, output: 4.00 },
+  // Gemini
+  'gemini-2.5-flash': { input: 0.30, output: 2.50 },
+  'gemini-2.5-flash-lite': { input: 0.10, output: 0.40 },
+  'gemini-2.5-pro': { input: 1.25, output: 10.00 },
+  'gemini-3-flash-preview': { input: 0.50, output: 3.00 },
+  'gemini-3.1-pro-preview': { input: 2.00, output: 12.00 },
+  'gemini-embedding-001': { input: 0.15, output: 0 },
   // Embeddings
   'text-embedding-3-small': { input: 0.02, output: 0 },
   'text-embedding-3-large': { input: 0.13, output: 0 },
